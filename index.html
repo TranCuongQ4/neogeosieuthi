@@ -211,6 +211,51 @@ h1{
     width:90%;
 }
 
+/* THÀNH PHẦN THÊM MỚI: CSS cho bảng thông báo liên hệ màu đỏ */
+#contact-modal {
+    display:none;
+    position:fixed;
+    top:0;
+    left:0;
+    width:100%;
+    height:100%;
+    background-color:rgba(0,0,0,.85);
+    z-index:100060;
+    justify-content:center;
+    align-items:center;
+    box-sizing:border-box;
+    padding:20px;
+}
+.contact-content {
+    background: #cc0000;
+    border: 3px solid #ffffff;
+    border-radius: 16px;
+    width: 100%;
+    max-width: 360px;
+    box-shadow: 0 0 25px rgba(255,0,0,.5);
+    padding: 25px;
+    box-sizing: border-box;
+    text-align: center;
+}
+.contact-text {
+    color: #ffffff;
+    font-size: 18px;
+    font-weight: bold;
+    line-height: 1.5;
+    margin-bottom: 22px;
+}
+.contact-btn {
+    background: #ffffff;
+    color: #cc0000;
+    border: none;
+    padding: 12px;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+    width: 100%;
+    box-shadow: 0 4px 6px rgba(0,0,0,.2);
+}
 
 @media (max-width: 480px) {
     .btn {
@@ -255,8 +300,8 @@ h1{
     </button>
 	
 	
-	<button class="btn btn-neogeo" onclick="startGame('roms/kingdrbb2.zip')">
-        💎  Đua Ngựa Ăn Xu 💎
+	<button class="btn btn-neogeo" onclick="startGame('roms/karatblz.zip')">
+        💎  KARATE WORLD 💎
     </button>
 	
 	
@@ -459,7 +504,7 @@ h1{
 
 <button class="btn btn-neogeo"
     onclick="startGame('roms/gunforc2.zip')">
-    💎     Gun Force II 💎
+    💎       Gun Force II 💎
 </button>
 
 
@@ -569,6 +614,18 @@ h1{
 
 </div>
 
+<!-- THÀNH PHẦN THÊM MỚI: HTML Giao diện bảng thông báo liên hệ nền đỏ viền trắng -->
+<div id="contact-modal">
+    <div class="contact-content">
+        <div class="contact-text">
+            Liên Hệ Trần Cường Để Thêm Game Mà Bạn Yêu Thích Nhé
+        </div>
+        <button class="contact-btn" onclick="dongBangLienHe()">
+            0907860662
+        </button>
+    </div>
+</div>
+
 <script>
 
 document.addEventListener("contextmenu",e=>{
@@ -581,8 +638,14 @@ document.addEventListener("selectstart",e=>{
 
 let isLoaderScriptLoaded = false;
 
+/* THAY ĐỔI: Hàm gốc mở link chuyển thành hàm mở thông báo nền đỏ */
 function openRomSource(){
-    window.open("https://archive.org/download/MAME_078", "_blank");
+    document.getElementById("contact-modal").style.display = "flex";
+}
+
+/* THÀNH PHẦN THÊM MỚI: Hàm đóng bảng thông báo liên hệ */
+function dongBangLienHe(){
+    document.getElementById("contact-modal").style.display = "none";
 }
 
 // Hàm chơi Samurai Shodown 2
