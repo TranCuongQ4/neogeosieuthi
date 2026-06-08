@@ -203,7 +203,7 @@ let conn = null;
 let html5QrcodeScanner = null;
 let pendingKeyStates = new Map();
 
-// Cấu hình ICE - tối ưu tốc độ
+// Cấu hình các máy chủ định tuyến ICE ổn định
 const iceServersConfig = {
     config: {
         iceServers: [
@@ -211,17 +211,7 @@ const iceServersConfig = {
             { urls: 'stun:stun1.l.google.com:19302' },
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
-            { urls: 'stun:stun4.l.google.com:19302' },
-            {
-                urls: 'turn:openrelay.metered.ca:80',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
-            },
-            {
-                urls: 'turn:openrelay.metered.ca:443',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
-            }
+            { urls: 'stun:stun4.l.google.com:19302' }
         ],
         iceCandidatePoolSize: 5
     }
@@ -236,7 +226,7 @@ function moCameraQuet() {
         (qrText) => { dongCameraQuet(); ketNoiMayChuPeerJS(qrText.trim()); },
         () => {}
     ).catch(() => {
-        alert("Không mở được camera!");
+        alert("Không mở được camera! Vui lòng đảm bảo trang web đang dùng giao thức HTTPS.");
         dongCameraQuet();
     });
 }
@@ -251,43 +241,61 @@ function ketNoiMayChuPeerJS(roomId) {
     const statusText = document.getElementById("status-text");
     statusText.innerText = `Đang kết nối...`;
 
-    if (peer) { 
-        peer.destroy(); 
+    // Giải phóng kết nối cũ một cách triệt để trước khi tạo phiên mới
+    if (conn) {
+        try { conn.close(); } catch(e) {}
+        conn = null;
+    }
+    if (peer) {
+        try { peer.destroy(); } catch(e) {}
         peer = null;
     }
-    if (conn) { conn = null; }
     
-    peer = new Peer(iceServersConfig);
+    // Khởi tạo thực thể Peer mới với cấu hình ổn định và bật debug: 2 để dễ dàng theo dõi lỗi
+    peer = new Peer({
+        config: iceServersConfig.config,
+        debug: 2
+    });
 
-    peer.on('open', function() {
-        conn = peer.connect(`trancuong_mame_${roomId}`, { reliable: false, ordered: false });
+    peer.on('open', function(id) {
+        console.log("Phiên Peer điện thoại đã mở. Đang thực hiện bắt tay tới máy chủ PC...");
         
+        // Thiết lập kết nối DataConnection trực tiếp
+        conn = peer.connect(`trancuong_mame_${roomId}`, { 
+            reliable: false, 
+            ordered: false 
+        });
+        
+        // Cơ chế Timeout hủy nếu quá 6 giây không thấy tín hiệu từ máy chủ nhận phản hồi
         const connectTimeout = setTimeout(() => {
             if (conn && !conn.open) {
-                statusText.innerText = "❌ Kết nối thất bại!";
+                statusText.innerText = "❌ Kết nối thất bại (Quá thời gian)!";
+                if (conn) conn.close();
             }
-        }, 5000);
+        }, 6000);
         
         conn.on('open', function() {
             clearTimeout(connectTimeout);
             statusBar.classList.add("connected");
             statusText.innerHTML = "<span class='status-dot'></span>⚡ TAY CẦM SIÊU NHẠY! ⚡";
+            console.log("Kết nối thành công! Đã có thể gửi dữ liệu phím.");
         });
         
         conn.on('close', function() {
             statusBar.classList.remove("connected");
             statusText.innerText = "❌ Mất kết nối.";
+            console.log("Kết nối DataConnection bị ngắt.");
         });
         
         conn.on('error', function(err) {
-            console.log("Lỗi:", err);
-            statusText.innerText = "❌ Lỗi kết nối!";
+            console.error("Lỗi trên kênh truyền dữ liệu:", err);
+            statusText.innerText = "❌ Lỗi dữ liệu kết nối!";
         });
     });
     
     peer.on('error', function(err) {
-        console.log("Peer error:", err);
-        statusText.innerText = "❌ Không thể kết nối!";
+        console.error("Lỗi hệ thống PeerJS:", err);
+        statusText.innerText = "❌ Thất bại: " + err.type;
     });
 }
 
@@ -314,7 +322,6 @@ function guiLenhPhim(type, key, keyCode, code) {
 const activeButtons = new Set();
 
 function handleTouch(e) {
-    // Kiểm tra xem có phải đang chạm vào nút game không
     let isGameButton = false;
     for (let i = 0; i < e.touches.length; i++) {
         const touch = e.touches[i];
@@ -327,7 +334,6 @@ function handleTouch(e) {
         }
     }
     
-    // Chỉ preventDefault khi chạm vào nút game
     if (isGameButton) {
         e.preventDefault();
     }
@@ -542,7 +548,7 @@ function moveJoystick(touch) {
                 closeBtn.style.transform = "none";
                 closeBtn.style.boxShadow = "0 5px 0px #990000, 0 6px 10px rgba(0,0,0,0.5)";
                 if (!hasMoved) {
-                    window.location.href = "mame.html";
+                    window.location.href = "index.html";
                 }
                 break;
             }
