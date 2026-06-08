@@ -203,7 +203,7 @@ let conn = null;
 let html5QrcodeScanner = null;
 let pendingKeyStates = new Map();
 
-// Cấu hình các máy chủ định tuyến ICE ổn định
+// Cấu hình ICE
 const iceServersConfig = {
     config: {
         iceServers: [
@@ -226,7 +226,7 @@ function moCameraQuet() {
         (qrText) => { dongCameraQuet(); ketNoiMayChuPeerJS(qrText.trim()); },
         () => {}
     ).catch(() => {
-        alert("Không mở được camera! Vui lòng đảm bảo trang web đang dùng giao thức HTTPS.");
+        alert("Không mở được camera!");
         dongCameraQuet();
     });
 }
@@ -241,36 +241,21 @@ function ketNoiMayChuPeerJS(roomId) {
     const statusText = document.getElementById("status-text");
     statusText.innerText = `Đang kết nối...`;
 
-    // Giải phóng kết nối cũ một cách triệt để trước khi tạo phiên mới
-    if (conn) {
-        try { conn.close(); } catch(e) {}
-        conn = null;
-    }
-    if (peer) {
-        try { peer.destroy(); } catch(e) {}
-        peer = null;
-    }
+    if (conn) { try { conn.close(); } catch(e) {} conn = null; }
+    if (peer) { try { peer.destroy(); } catch(e) {} peer = null; }
     
-    // Khởi tạo thực thể Peer mới với cấu hình ổn định và bật debug: 2 để dễ dàng theo dõi lỗi
-    peer = new Peer({
-        config: iceServersConfig.config,
-        debug: 2
-    });
+    peer = new Peer(iceServersConfig);
 
     peer.on('open', function(id) {
-        console.log("Phiên Peer điện thoại đã mở. Đang thực hiện bắt tay tới máy chủ PC...");
-        
-        // Thiết lập kết nối DataConnection trực tiếp
-        conn = peer.connect(`trancuong_mame_${roomId}`, { 
+        // QUAN TRỌNG: Kết nối đúng ID với index.html (trancuong_neogeo_)
+        conn = peer.connect(`trancuong_neogeo_${roomId}`, { 
             reliable: false, 
             ordered: false 
         });
         
-        // Cơ chế Timeout hủy nếu quá 6 giây không thấy tín hiệu từ máy chủ nhận phản hồi
         const connectTimeout = setTimeout(() => {
             if (conn && !conn.open) {
-                statusText.innerText = "❌ Kết nối thất bại (Quá thời gian)!";
-                if (conn) conn.close();
+                statusText.innerText = "❌ Kết nối thất bại!";
             }
         }, 6000);
         
@@ -278,24 +263,22 @@ function ketNoiMayChuPeerJS(roomId) {
             clearTimeout(connectTimeout);
             statusBar.classList.add("connected");
             statusText.innerHTML = "<span class='status-dot'></span>⚡ TAY CẦM SIÊU NHẠY! ⚡";
-            console.log("Kết nối thành công! Đã có thể gửi dữ liệu phím.");
         });
         
         conn.on('close', function() {
             statusBar.classList.remove("connected");
             statusText.innerText = "❌ Mất kết nối.";
-            console.log("Kết nối DataConnection bị ngắt.");
         });
         
         conn.on('error', function(err) {
-            console.error("Lỗi trên kênh truyền dữ liệu:", err);
-            statusText.innerText = "❌ Lỗi dữ liệu kết nối!";
+            console.error("Lỗi kết nối:", err);
+            statusText.innerText = "❌ Lỗi kết nối!";
         });
     });
     
     peer.on('error', function(err) {
-        console.error("Lỗi hệ thống PeerJS:", err);
-        statusText.innerText = "❌ Thất bại: " + err.type;
+        console.error("Peer error:", err);
+        statusText.innerText = "❌ Không thể kết nối!";
     });
 }
 
@@ -318,7 +301,6 @@ function guiLenhPhim(type, key, keyCode, code) {
     });
 }
 
-// XỬ LÝ TOUCH - CHỈ XỬ LÝ NÚT GAME, KHÔNG ẢNH HƯỞNG NÚT QUÉT QR
 const activeButtons = new Set();
 
 function handleTouch(e) {
@@ -379,7 +361,6 @@ window.addEventListener('touchmove', handleTouch, { passive: false });
 window.addEventListener('touchend', handleTouch, { passive: false });
 window.addEventListener('touchcancel', handleTouch, { passive: false });
 
-// LOGIC JOYSTICK
 const joyContainer = document.getElementById('joy-container');
 const joyKnob = document.getElementById('joy-knob');
 let joystickActive = false;
@@ -487,7 +468,6 @@ function moveJoystick(touch) {
     updateJoystickKeys(nextKeys);
 }
 
-// XỬ LÝ NÚT ĐÓNG
 (function() {
     const closeBtn = document.getElementById("floating-close-btn");
     let isDragging = false;
@@ -556,7 +536,6 @@ function moveJoystick(touch) {
     });
 })();
 
-// Chặn pinch zoom
 document.documentElement.addEventListener('touchstart', (e) => {
     if (e.touches.length > 1) e.preventDefault();
 }, { passive: false });
