@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 
-<title>Neo Geo</title>
+<title>Neo Geo - Game Thùng Siêu Thị</title>
 
 <style>
 
@@ -256,6 +256,59 @@ h1{
     box-shadow: 0 4px 6px rgba(0,0,0,.2);
 }
 
+/* ===== PANEL KẾT NỐI PEERJS ===== */
+.webrtc-panel {
+    background: #1e2530;
+    border: 2px solid #30363d;
+    border-radius: 14px;
+    padding: 15px;
+    width: 90%;
+    max-width: 340px;
+    margin: 10px 0 15px 0;
+    text-align: center;
+    box-sizing: border-box;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+.webrtc-title {
+    font-size: 14px;
+    font-weight: bold;
+    color: #ffcc00;
+    margin-bottom: 10px;
+}
+.webrtc-btn-group {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 5px;
+}
+.sub-btn {
+    flex: 1;
+    background: #2a3241;
+    border: 1px solid #444;
+    color: #fff;
+    padding: 10px 5px;
+    font-size: 12px;
+    font-weight: bold;
+    border-radius: 8px;
+    cursor: pointer;
+}
+.sub-btn:active { background: #ffcc00; color: #000; }
+.btn-host { border-color: #00ffcc; color: #00ffcc; }
+.btn-client { border-color: #ff3366; color: #ff3366; }
+#qrcode-area {
+    display: none;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed #444;
+}
+#qrcode {
+    background: white;
+    padding: 8px;
+    display: inline-block;
+    border-radius: 8px;
+    margin-top: 5px;
+}
+
 @media (max-width: 480px) {
     .btn {
         font-size:14px;
@@ -270,6 +323,8 @@ h1{
 }
 
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -288,6 +343,21 @@ h1{
     <button class="btn btn-back" onclick="window.location.href='https://trancuongq4.github.io/maygametuoitho/mame.html'">
         ← Trở Về Game Thùng Xưa
     </button>
+
+    <!-- ========== PHẦN KẾT NỐI TAY CẦM PLAYER 2 (PEERJS) ========== -->
+    <div class="webrtc-panel">
+        <div class="webrtc-title">🔗 KẾT NỐI TAY CẦM PLAYER 2</div>
+        <div class="webrtc-btn-group">
+            <button class="sub-btn btn-host" onclick="kichHoatMayChuPC()">LÀM MÁY CHỦ (HIỆN QR)</button>
+            <button class="sub-btn btn-client" onclick="window.location.href='taycam.html'">LÀM MÁY PHỤ (VÀO TAY CẦM)</button>
+        </div>
+        <div id="qrcode-area">
+            <div id="status-text" style="font-size: 12px; color: #aaa;">Đang khởi tạo máy chủ...</div>
+            <div id="qrcode"></div>
+            <div style="font-size: 11px; color: #00ffcc; margin-top: 6px;">Lấy máy phụ quét mã này!</div>
+        </div>
+    </div>
+    <!-- ============================================================== -->
 	
 	<button class="btn btn-neogeo" onclick="startGame('roms/heatbrlu.zip')">
         🔹  Heated Barrel 🔹
@@ -508,6 +578,10 @@ h1{
             <div class="modal-item">
                 ✅ Xoay ngang màn hình để chơi tốt nhất
             </div>
+            
+            <div class="modal-item">
+                ✅ <b style="color:#00ffcc;">🎮 CHƠI 2 NGƯỜI:</b> Nhấn "LÀM MÁY CHỦ" -> Hiện QR -> Máy phụ (tay cầm) quét QR hoặc nhập mã để điều khiển P2 siêu nhanh.
+            </div>
 
             <div class="modal-item">
                 ✅ Trần Cường <b>Zalo: </b>0907860662
@@ -725,6 +799,70 @@ function moBangHuongDan(){
 function dongBangHuongDan(){
     document.getElementById("guide-modal").style.display = "none";
 }
+
+// ===================== HỆ THỐNG NHẬN TÍN HIỆU KHÔNG ĐỒNG BỘ SIÊU TỐC (PEERJS) =====================
+let peer;
+let qrcodeCreated = false;
+const roomId = Math.floor(1000 + Math.random() * 9000).toString();
+
+function kichHoatMayChuPC() {
+    document.getElementById("qrcode-area").style.display = "block";
+    const statusText = document.getElementById("status-text");
+    if (qrcodeCreated) return;
+
+    peer = new Peer(`trancuong_neogeo_${roomId}`, {
+        config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
+    });
+
+    peer.on('open', function(id) {
+        statusText.innerText = `Chờ kết nối... (Mã Phòng: ${roomId})`;
+        // Xóa QR cũ nếu có
+        const qrDiv = document.getElementById("qrcode");
+        qrDiv.innerHTML = "";
+        new QRCode(qrDiv, { text: roomId, width: 130, height: 130 });
+        qrcodeCreated = true;
+    });
+
+    peer.on('connection', function(conn) {
+        conn.on('open', function() {
+            statusText.innerHTML = "✅ <span style='color:#00ffcc;font-weight:bold;'>ĐÃ KẾT NỐI TAY CẦM P2 CỰC NHANH!</span>";
+            const qrElement = document.getElementById("qrcode");
+            if(qrElement) qrElement.style.display = "none";
+        });
+
+        conn.on('data', function(data) {
+            if (data && data.sender === "EmulatorJS_P2") {
+                const eventType = data.type === "keydown" ? "keydown" : "keyup";
+                const keyEvent = new KeyboardEvent(eventType, {
+                    key: data.key,
+                    keyCode: data.keyCode,
+                    code: data.code,
+                    which: data.keyCode,
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+                document.dispatchEvent(keyEvent);
+                const emuEl = document.getElementById("emulator");
+                if(emuEl) emuEl.dispatchEvent(keyEvent);
+                
+                // Tương thích với EmulatorJS controls
+                if(window.EJS_emulator && window.EJS_emulator.gameManager && window.EJS_emulator.gameManager.controls) {
+                    try {
+                        if(data.type === "keydown") {
+                            window.EJS_emulator.gameManager.controls.keyDown(data.keyCode, data.key);
+                        } else {
+                            window.EJS_emulator.gameManager.controls.keyUp(data.keyCode, data.key);
+                        }
+                    } catch(e){}
+                }
+            }
+        });
+    });
+}
+// =====================================================================
+
+function shadowNeoBomber() { startGame('roms/neobombe.zip'); }
 
 </script>
 
