@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Tay Cầm PRO Trần Cường</title>
+<title>Tay Cầm PRO Trần Cường - Siêu tốc</title>
 <style>
 * { 
     box-sizing: border-box; 
@@ -156,7 +156,7 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 #reader { width: 260px; height: 260px; background: #000; border: 2px solid #00ffcc; border-radius: 8px; overflow: hidden; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -201,6 +201,38 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 let peer = null;
 let conn = null;
 let html5QrcodeScanner = null;
+let currentRoomId = null;
+
+// Cấu hình ICE servers tối ưu (STUN + TURN)
+const iceServersConfig = {
+    config: {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' },
+            { urls: 'stun:stun1.l.google.com:19302' },
+            { urls: 'stun:stun2.l.google.com:19302' },
+            { urls: 'stun:stun3.l.google.com:19302' },
+            { urls: 'stun:stun4.l.google.com:19302' },
+            // TURN server miễn phí từ OpenRelay (hỗ trợ khi NAT nghiêm ngặt)
+            {
+                urls: 'turn:openrelay.metered.ca:80',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            },
+            {
+                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                username: 'openrelayproject',
+                credential: 'openrelayproject'
+            }
+        ],
+        iceCandidatePoolSize: 10,  // Tăng pool kết nối
+        iceTransportPolicy: 'all'   // Cho phép cả relay và direct
+    }
+};
 
 function moCameraQuet() {
     document.getElementById("camera-overlay").style.display = "flex";
@@ -224,22 +256,74 @@ function dongCameraQuet() {
 function ketNoiMayChuPeerJS(roomId) {
     const statusBar = document.getElementById("status-bar");
     const statusText = document.getElementById("status-text");
-    statusText.innerText = `Đang kết nối cực nhanh...`;
+    statusText.innerText = `Đang kết nối siêu tốc...`;
+    currentRoomId = roomId;
 
-    if (peer) { peer.destroy(); }
-    peer = new Peer({ config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
+    if (peer) { 
+        peer.destroy(); 
+        peer = null;
+    }
+    
+    // Tạo Peer với cấu hình ICE tối ưu
+    peer = new Peer(iceServersConfig);
+    
+    // Timeout nếu kết nối lâu
+    const timeoutId = setTimeout(() => {
+        if (peer && !conn) {
+            statusText.innerText = "⚠️ Kết nối chậm, thử lại...";
+        }
+    }, 5000);
 
     peer.on('open', function() {
-        // ĐÃ SỬA: Đồng bộ ID với file index.html (trancuong_neogeo_ thay vì trancuong_mame_)
-        conn = peer.connect(`trancuong_neogeo_${roomId}`, { reliable: false, ordered: false });
+        clearTimeout(timeoutId);
+        // Kết nối với máy chủ (hỗ trợ cả 2 loại ID)
+        const possibleIds = [
+            `trancuong_neogeo_${roomId}`,
+            `trancuong_mame_${roomId}`
+        ];
+        
+        // Thử kết nối với ID đầu tiên
+        connectWithRetry(possibleIds, 0);
+    });
+    
+    function connectWithRetry(ids, index) {
+        if (index >= ids.length) {
+            statusText.innerText = "❌ Không tìm thấy máy chủ!";
+            return;
+        }
+        
+        statusText.innerText = `Đang kết nối đến máy chủ... (${index+1}/${ids.length})`;
+        
+        conn = peer.connect(ids[index], { reliable: false, ordered: false });
+        
+        const connectTimeout = setTimeout(() => {
+            if (conn && !conn.open) {
+                connectWithRetry(ids, index + 1);
+            }
+        }, 3000);
+        
         conn.on('open', function() {
+            clearTimeout(connectTimeout);
             statusBar.classList.add("connected");
-            statusText.innerHTML = "<span class='status-dot'></span>TAY CẦM 0ms SẴN SÀNG!";
+            statusText.innerHTML = "<span class='status-dot'></span>⚡ TAY CẦM SIÊU TỐC ĐÃ SẴN SÀNG! ⚡";
         });
+        
         conn.on('close', function() {
             statusBar.classList.remove("connected");
-            statusText.innerText = "❌ Mất kết nối.";
+            statusText.innerText = "❌ Mất kết nối. Quét lại QR!";
         });
+        
+        conn.on('error', function(err) {
+            console.log("Lỗi kết nối:", err);
+            clearTimeout(connectTimeout);
+            connectWithRetry(ids, index + 1);
+        });
+    }
+    
+    peer.on('error', function(err) {
+        console.log("Peer error:", err);
+        clearTimeout(timeoutId);
+        statusText.innerText = "❌ Lỗi kết nối! Thử lại.";
     });
 }
 
@@ -250,11 +334,13 @@ function guiLenhPhim(type, key, keyCode, code) {
             type: type,
             key: key,
             keyCode: parseInt(keyCode),
-            code: code
+            code: code,
+            timestamp: Date.now()  // Thêm timestamp để debug
         });
     }
 }
 
+// Phần còn lại giữ nguyên...
 const activeButtons = new Set();
 function handleTouch(e) {
     const currentTouches = new Set();
