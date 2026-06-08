@@ -119,10 +119,38 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
     touch-action: manipulation;
 }
 
-.btn-y { top: 0; left: 57px; background: linear-gradient(180deg, #bb8fce, #7d3c98); border: 2px solid #d7bde2; color: #fff; box-shadow: 0 6px 0px #4a235a, 0 6px 12px rgba(0,0,0,0.5); }   
-.btn-x { top: 57px; left: 0; background: linear-gradient(180deg, #5dade2, #2e86c1); border: 2px solid #85c1e9; color: #fff; box-shadow: 0 6px 0px #1b4f72, 0 6px 12px rgba(0,0,0,0.5); }   
-.btn-b { top: 57px; right: 0; background: linear-gradient(180deg, #f8c471, #d35400); border: 2px solid #fad7a0; color: #fff; box-shadow: 0 6px 0px #7e5109, 0 6px 12px rgba(0,0,0,0.5); }  
-.btn-a { bottom: 0; left: 57px; background: linear-gradient(180deg, #f1948a, #cb4335); border: 2px solid #f5b7b1; color: #fff; box-shadow: 0 6px 0px #78281f, 0 6px 12px rgba(0,0,0,0.5); } 
+/* ===== ĐÃ ĐỔI VỊ TRÍ NÚT X ↔ Y và A ↔ B ===== */
+/* Nút X (Màu Xanh Dương) - CHUYỂN LÊN TRÊN CÙNG */
+.btn-x { 
+    top: 0; left: 57px; 
+    background: linear-gradient(180deg, #5dade2, #2e86c1); 
+    border: 2px solid #85c1e9; color: #fff; 
+    box-shadow: 0 6px 0px #1b4f72, 0 6px 12px rgba(0,0,0,0.5);
+}   
+
+/* Nút Y (Màu Tím) - CHUYỂN SANG BÊN TRÁI */
+.btn-y { 
+    top: 57px; left: 0; 
+    background: linear-gradient(180deg, #bb8fce, #7d3c98); 
+    border: 2px solid #d7bde2; color: #fff; 
+    box-shadow: 0 6px 0px #4a235a, 0 6px 12px rgba(0,0,0,0.5);
+}   
+
+/* Nút A (Màu Đỏ) - CHUYỂN QUA BÊN PHẢI */
+.btn-a { 
+    top: 57px; right: 0; 
+    background: linear-gradient(180deg, #f1948a, #cb4335); 
+    border: 2px solid #f5b7b1; color: #fff; 
+    box-shadow: 0 6px 0px #78281f, 0 6px 12px rgba(0,0,0,0.5);
+}  
+
+/* Nút B (Màu Vàng Cam) - CHUYỂN XUỐNG DƯỚI CÙNG */
+.btn-b { 
+    bottom: 0; left: 57px; 
+    background: linear-gradient(180deg, #f8c471, #d35400); 
+    border: 2px solid #fad7a0; color: #fff; 
+    box-shadow: 0 6px 0px #7e5109, 0 6px 12px rgba(0,0,0,0.5);
+} 
 
 .action-btn:active, .action-btn.active { 
     transform: translateY(5px);
@@ -184,10 +212,11 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
     </div>
 
     <div class="snes-diamond">
-        <div class="action-btn btn-y" data-key="c" data-keycode="67" data-code="KeyC">Y</div>
+        <!-- ĐÃ ĐỔI VỊ TRÍ: X lên trên, Y sang trái, A sang phải, B xuống dưới -->
         <div class="action-btn btn-x" data-key="f" data-keycode="70" data-code="KeyF">X</div>
-        <div class="action-btn btn-b" data-key="d" data-keycode="68" data-code="KeyD">B</div>
+        <div class="action-btn btn-y" data-key="c" data-keycode="67" data-code="KeyC">Y</div>
         <div class="action-btn btn-a" data-key="v" data-keycode="86" data-code="KeyV">A</div>
+        <div class="action-btn btn-b" data-key="d" data-keycode="68" data-code="KeyD">B</div>
     </div>
 </div>
 
@@ -201,8 +230,8 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 let peer = null;
 let conn = null;
 let html5QrcodeScanner = null;
-let pendingKeyStates = new Map();
 
+// Tối ưu: Không cần pendingKeyStates nữa, gửi ngay lập tức
 // Cấu hình ICE
 const iceServersConfig = {
     config: {
@@ -222,7 +251,7 @@ function moCameraQuet() {
     html5QrcodeScanner = new Html5Qrcode("reader");
     html5QrcodeScanner.start(
         { facingMode: "environment" },
-        { fps: 15, qrbox: { width: 200, height: 200 } },
+        { fps: 30, qrbox: { width: 200, height: 200 } },
         (qrText) => { dongCameraQuet(); ketNoiMayChuPeerJS(qrText.trim()); },
         () => {}
     ).catch(() => {
@@ -247,7 +276,6 @@ function ketNoiMayChuPeerJS(roomId) {
     peer = new Peer(iceServersConfig);
 
     peer.on('open', function(id) {
-        // QUAN TRỌNG: Kết nối đúng ID với index.html (trancuong_neogeo_)
         conn = peer.connect(`trancuong_neogeo_${roomId}`, { 
             reliable: false, 
             ordered: false 
@@ -282,16 +310,11 @@ function ketNoiMayChuPeerJS(roomId) {
     });
 }
 
+// ===== TỐI ƯU GỬI LỆNH - KHÔNG TRỄ =====
 function guiLenhPhim(type, key, keyCode, code) {
     if (!conn || !conn.open) return;
     
-    const keyId = `${key}_${type}`;
-    const now = Date.now();
-    const lastSend = pendingKeyStates.get(keyId);
-    
-    if (lastSend && (now - lastSend) < 10) return;
-    pendingKeyStates.set(keyId, now);
-    
+    // Gửi trực tiếp không qua bất kỳ bộ lọc trễ nào
     conn.send({
         sender: "EmulatorJS_P2",
         type: type,
@@ -301,12 +324,16 @@ function guiLenhPhim(type, key, keyCode, code) {
     });
 }
 
+// XỬ LÝ TOUCH - TỐI ƯU NHẤT
 const activeButtons = new Set();
 
 function handleTouch(e) {
     let isGameButton = false;
-    for (let i = 0; i < e.touches.length; i++) {
-        const touch = e.touches[i];
+    const touches = e.touches;
+    
+    // Nhanh chóng xác định có chạm vào nút game không
+    for (let i = 0; i < touches.length; i++) {
+        const touch = touches[i];
         const element = document.elementFromPoint(touch.clientX, touch.clientY);
         if (element && (element.classList.contains('action-btn') || element.classList.contains('sys-btn') || element.classList.contains('shoulder-btn'))) {
             if (element.getAttribute('data-key')) {
@@ -323,51 +350,57 @@ function handleTouch(e) {
     const currentTouches = new Set();
     const changedButtons = { down: [], up: [] };
     
-    for (let i = 0; i < e.touches.length; i++) {
-        const touch = e.touches[i];
+    // Lấy các nút đang được chạm
+    for (let i = 0; i < touches.length; i++) {
+        const touch = touches[i];
         const element = document.elementFromPoint(touch.clientX, touch.clientY);
         if (element && (element.classList.contains('action-btn') || element.classList.contains('sys-btn') || element.classList.contains('shoulder-btn'))) {
             if (element.getAttribute('data-key')) currentTouches.add(element);
         }
     }
     
+    // Tìm nút vừa thả
     activeButtons.forEach(btn => {
         if (!currentTouches.has(btn)) {
             changedButtons.up.push(btn);
         }
     });
     
+    // Tìm nút vừa nhấn
     currentTouches.forEach(btn => {
         if (!activeButtons.has(btn)) {
             changedButtons.down.push(btn);
         }
     });
     
-    changedButtons.up.forEach(btn => {
+    // Xử lý thả trước (đảm bảo thứ tự đúng)
+    for (const btn of changedButtons.up) {
         btn.classList.remove('active');
         guiLenhPhim("keyup", btn.getAttribute('data-key'), btn.getAttribute('data-keycode'), btn.getAttribute('data-code'));
         activeButtons.delete(btn);
-    });
+    }
     
-    changedButtons.down.forEach(btn => {
+    // Xử lý nhấn sau
+    for (const btn of changedButtons.down) {
         btn.classList.add('active');
         guiLenhPhim("keydown", btn.getAttribute('data-key'), btn.getAttribute('data-keycode'), btn.getAttribute('data-code'));
         activeButtons.add(btn);
-    });
+    }
 }
 
+// Bắt sự kiện với độ ưu tiên cao nhất, không bỏ sót
 window.addEventListener('touchstart', handleTouch, { passive: false });
 window.addEventListener('touchmove', handleTouch, { passive: false });
 window.addEventListener('touchend', handleTouch, { passive: false });
 window.addEventListener('touchcancel', handleTouch, { passive: false });
 
+// LOGIC JOYSTICK - TỐI ƯU TỐC ĐỘ
 const joyContainer = document.getElementById('joy-container');
 const joyKnob = document.getElementById('joy-knob');
 let joystickActive = false;
 let joyTouchId = null;
 const maxDistance = 40; 
 let currentKeys = { i: false, k: false, j: false, l: false };
-let lastJoystickSend = 0;
 
 const keyMapJoy = {
     i: { key: "i", keyCode: 73, code: "KeyI" },
@@ -376,13 +409,9 @@ const keyMapJoy = {
     l: { key: "l", keyCode: 76, code: "KeyL" }
 };
 
-function guiLenhPhimNhanh(type, key, keyCode, code) {
+// Gửi lệnh joystick không giới hạn tần suất
+function guiLenhPhimJoy(type, key, keyCode, code) {
     if (!conn || !conn.open) return;
-    
-    const now = Date.now();
-    if (type === 'keydown' && (now - lastJoystickSend) < 12) return;
-    lastJoystickSend = now;
-    
     conn.send({
         sender: "EmulatorJS_P2",
         type: type,
@@ -395,10 +424,10 @@ function guiLenhPhimNhanh(type, key, keyCode, code) {
 function updateJoystickKeys(targetKeys) {
     for (let k in currentKeys) {
         if (targetKeys[k] && !currentKeys[k]) {
-            guiLenhPhimNhanh("keydown", keyMapJoy[k].key, keyMapJoy[k].keyCode, keyMapJoy[k].code);
+            guiLenhPhimJoy("keydown", keyMapJoy[k].key, keyMapJoy[k].keyCode, keyMapJoy[k].code);
             currentKeys[k] = true;
         } else if (!targetKeys[k] && currentKeys[k]) {
-            guiLenhPhimNhanh("keyup", keyMapJoy[k].key, keyMapJoy[k].keyCode, keyMapJoy[k].code);
+            guiLenhPhimJoy("keyup", keyMapJoy[k].key, keyMapJoy[k].keyCode, keyMapJoy[k].code);
             currentKeys[k] = false;
         }
     }
@@ -468,6 +497,7 @@ function moveJoystick(touch) {
     updateJoystickKeys(nextKeys);
 }
 
+// XỬ LÝ NÚT ĐÓNG
 (function() {
     const closeBtn = document.getElementById("floating-close-btn");
     let isDragging = false;
