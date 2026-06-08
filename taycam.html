@@ -178,7 +178,7 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
     </div>
 
     <div class="center-controls">
-        <button class="btn-scan" onclick="moCameraQuet()">📷 QUÉT QR</button>
+        <button class="btn-scan" id="btnQuetQR" onclick="moCameraQuet()">📷 QUÉT QR</button>
         <div class="sys-btn" data-key="0" data-keycode="48" data-code="Digit0">SELECT (COIN)</div>
         <div class="sys-btn" data-key="9" data-keycode="57" data-code="Digit9">START</div>
     </div>
@@ -201,9 +201,9 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 let peer = null;
 let conn = null;
 let html5QrcodeScanner = null;
-let pendingKeyStates = new Map(); // Chống trùng lặp tin nhắn
+let pendingKeyStates = new Map();
 
-// Cấu hình ICE - tối ưu tốc độ, giữ TURN dự phòng
+// Cấu hình ICE - tối ưu tốc độ
 const iceServersConfig = {
     config: {
         iceServers: [
@@ -212,7 +212,6 @@ const iceServersConfig = {
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
             { urls: 'stun:stun4.l.google.com:19302' },
-            // TURN dự phòng (chỉ dùng khi thực sự cần)
             {
                 urls: 'turn:openrelay.metered.ca:80',
                 username: 'openrelayproject',
@@ -224,7 +223,7 @@ const iceServersConfig = {
                 credential: 'openrelayproject'
             }
         ],
-        iceCandidatePoolSize: 5  // Cân bằng giữa tốc độ và khả năng kết nối
+        iceCandidatePoolSize: 5
     }
 };
 
@@ -261,7 +260,6 @@ function ketNoiMayChuPeerJS(roomId) {
     peer = new Peer(iceServersConfig);
 
     peer.on('open', function() {
-        // Kết nối trực tiếp KHÔNG RETRY - giữ độ nhạy tối đa
         conn = peer.connect(`trancuong_mame_${roomId}`, { reliable: false, ordered: false });
         
         const connectTimeout = setTimeout(() => {
@@ -293,7 +291,6 @@ function ketNoiMayChuPeerJS(roomId) {
     });
 }
 
-// Gửi lệnh với cơ chế chống trùng lặp
 function guiLenhPhim(type, key, keyCode, code) {
     if (!conn || !conn.open) return;
     
@@ -301,7 +298,6 @@ function guiLenhPhim(type, key, keyCode, code) {
     const now = Date.now();
     const lastSend = pendingKeyStates.get(keyId);
     
-    // Chống gửi trùng lặp trong 10ms
     if (lastSend && (now - lastSend) < 10) return;
     pendingKeyStates.set(keyId, now);
     
@@ -314,36 +310,31 @@ function guiLenhPhim(type, key, keyCode, code) {
     });
 }
 
-// XỬ LÝ TOUCH SIÊU NHẠY - không bị loạn
+// XỬ LÝ TOUCH - CHỈ XỬ LÝ NÚT GAME, KHÔNG ẢNH HƯỞNG NÚT QUÉT QR
 const activeButtons = new Set();
-let touchHandling = false;
-let pendingUpdates = false;
-
-function processTouchChanges() {
-    if (touchHandling) {
-        pendingUpdates = true;
-        return;
-    }
-    touchHandling = true;
-    
-    // Dùng requestAnimationFrame để đồng bộ với màn hình
-    requestAnimationFrame(() => {
-        // Không cần xử lý thêm vì handleTouch đã gửi trực tiếp
-        touchHandling = false;
-        if (pendingUpdates) {
-            pendingUpdates = false;
-            processTouchChanges();
-        }
-    });
-}
 
 function handleTouch(e) {
-    e.preventDefault(); // Ngăn scroll khi chạm
+    // Kiểm tra xem có phải đang chạm vào nút game không
+    let isGameButton = false;
+    for (let i = 0; i < e.touches.length; i++) {
+        const touch = e.touches[i];
+        const element = document.elementFromPoint(touch.clientX, touch.clientY);
+        if (element && (element.classList.contains('action-btn') || element.classList.contains('sys-btn') || element.classList.contains('shoulder-btn'))) {
+            if (element.getAttribute('data-key')) {
+                isGameButton = true;
+                break;
+            }
+        }
+    }
+    
+    // Chỉ preventDefault khi chạm vào nút game
+    if (isGameButton) {
+        e.preventDefault();
+    }
     
     const currentTouches = new Set();
     const changedButtons = { down: [], up: [] };
     
-    // Lấy các nút đang được chạm
     for (let i = 0; i < e.touches.length; i++) {
         const touch = e.touches[i];
         const element = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -352,44 +343,37 @@ function handleTouch(e) {
         }
     }
     
-    // Tìm nút vừa thả
     activeButtons.forEach(btn => {
         if (!currentTouches.has(btn)) {
             changedButtons.up.push(btn);
         }
     });
     
-    // Tìm nút vừa nhấn
     currentTouches.forEach(btn => {
         if (!activeButtons.has(btn)) {
             changedButtons.down.push(btn);
         }
     });
     
-    // Xử lý thả trước
     changedButtons.up.forEach(btn => {
         btn.classList.remove('active');
         guiLenhPhim("keyup", btn.getAttribute('data-key'), btn.getAttribute('data-keycode'), btn.getAttribute('data-code'));
         activeButtons.delete(btn);
     });
     
-    // Xử lý nhấn sau
     changedButtons.down.forEach(btn => {
         btn.classList.add('active');
         guiLenhPhim("keydown", btn.getAttribute('data-key'), btn.getAttribute('data-keycode'), btn.getAttribute('data-code'));
         activeButtons.add(btn);
     });
-    
-    processTouchChanges();
 }
 
-// Bắt sự kiện với độ ưu tiên cao nhất
 window.addEventListener('touchstart', handleTouch, { passive: false });
 window.addEventListener('touchmove', handleTouch, { passive: false });
 window.addEventListener('touchend', handleTouch, { passive: false });
 window.addEventListener('touchcancel', handleTouch, { passive: false });
 
-// LOGIC JOYSTICK - tối ưu tốc độ
+// LOGIC JOYSTICK
 const joyContainer = document.getElementById('joy-container');
 const joyKnob = document.getElementById('joy-knob');
 let joystickActive = false;
@@ -408,7 +392,6 @@ const keyMapJoy = {
 function guiLenhPhimNhanh(type, key, keyCode, code) {
     if (!conn || !conn.open) return;
     
-    // Giới hạn tần suất gửi cho joystick (60fps ~ 16ms)
     const now = Date.now();
     if (type === 'keydown' && (now - lastJoystickSend) < 12) return;
     lastJoystickSend = now;
@@ -436,6 +419,7 @@ function updateJoystickKeys(targetKeys) {
 
 joyContainer.addEventListener('touchstart', (e) => {
     e.preventDefault();
+    e.stopPropagation();
     if (joystickActive) return;
     const touch = e.changedTouches[0];
     joystickActive = true;
@@ -571,7 +555,6 @@ document.documentElement.addEventListener('touchstart', (e) => {
     if (e.touches.length > 1) e.preventDefault();
 }, { passive: false });
 
-// Chặn chuột phải và các phím tắt
 document.addEventListener('contextmenu', function(e) { e.preventDefault(); }, false);
 document.addEventListener('selectstart', function(e) { e.preventDefault(); });
 document.addEventListener('keydown', function(e) {
