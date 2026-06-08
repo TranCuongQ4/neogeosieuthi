@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-<title>Tay Cầm PRO Trần Cường - Siêu tốc</title>
+<title>Tay Cầm PRO Trần Cường - Siêu Nhạy</title>
 <style>
 * { 
     box-sizing: border-box; 
@@ -156,7 +156,7 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 #reader { width: 260px; height: 260px; background: #000; border: 2px solid #00ffcc; border-radius: 8px; overflow: hidden; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
 </head>
 <body>
 
@@ -201,9 +201,9 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 let peer = null;
 let conn = null;
 let html5QrcodeScanner = null;
-let currentRoomId = null;
+let pendingKeyStates = new Map(); // Chống trùng lặp tin nhắn
 
-// Cấu hình ICE servers tối ưu (STUN + TURN)
+// Cấu hình ICE - tối ưu tốc độ, giữ TURN dự phòng
 const iceServersConfig = {
     config: {
         iceServers: [
@@ -212,7 +212,7 @@ const iceServersConfig = {
             { urls: 'stun:stun2.l.google.com:19302' },
             { urls: 'stun:stun3.l.google.com:19302' },
             { urls: 'stun:stun4.l.google.com:19302' },
-            // TURN server miễn phí từ OpenRelay (hỗ trợ khi NAT nghiêm ngặt)
+            // TURN dự phòng (chỉ dùng khi thực sự cần)
             {
                 urls: 'turn:openrelay.metered.ca:80',
                 username: 'openrelayproject',
@@ -222,15 +222,9 @@ const iceServersConfig = {
                 urls: 'turn:openrelay.metered.ca:443',
                 username: 'openrelayproject',
                 credential: 'openrelayproject'
-            },
-            {
-                urls: 'turn:openrelay.metered.ca:443?transport=tcp',
-                username: 'openrelayproject',
-                credential: 'openrelayproject'
             }
         ],
-        iceCandidatePoolSize: 10,  // Tăng pool kết nối
-        iceTransportPolicy: 'all'   // Cho phép cả relay và direct
+        iceCandidatePoolSize: 5  // Cân bằng giữa tốc độ và khả năng kết nối
     }
 };
 
@@ -239,7 +233,7 @@ function moCameraQuet() {
     html5QrcodeScanner = new Html5Qrcode("reader");
     html5QrcodeScanner.start(
         { facingMode: "environment" },
-        { fps: 10, qrbox: { width: 200, height: 200 } },
+        { fps: 15, qrbox: { width: 200, height: 200 } },
         (qrText) => { dongCameraQuet(); ketNoiMayChuPeerJS(qrText.trim()); },
         () => {}
     ).catch(() => {
@@ -256,94 +250,100 @@ function dongCameraQuet() {
 function ketNoiMayChuPeerJS(roomId) {
     const statusBar = document.getElementById("status-bar");
     const statusText = document.getElementById("status-text");
-    statusText.innerText = `Đang kết nối siêu tốc...`;
-    currentRoomId = roomId;
+    statusText.innerText = `Đang kết nối...`;
 
     if (peer) { 
         peer.destroy(); 
         peer = null;
     }
+    if (conn) { conn = null; }
     
-    // Tạo Peer với cấu hình ICE tối ưu
     peer = new Peer(iceServersConfig);
-    
-    // Timeout nếu kết nối lâu
-    const timeoutId = setTimeout(() => {
-        if (peer && !conn) {
-            statusText.innerText = "⚠️ Kết nối chậm, thử lại...";
-        }
-    }, 5000);
 
     peer.on('open', function() {
-        clearTimeout(timeoutId);
-        // Kết nối với máy chủ (hỗ trợ cả 2 loại ID)
-        const possibleIds = [
-            `trancuong_neogeo_${roomId}`,
-            `trancuong_mame_${roomId}`
-        ];
-        
-        // Thử kết nối với ID đầu tiên
-        connectWithRetry(possibleIds, 0);
-    });
-    
-    function connectWithRetry(ids, index) {
-        if (index >= ids.length) {
-            statusText.innerText = "❌ Không tìm thấy máy chủ!";
-            return;
-        }
-        
-        statusText.innerText = `Đang kết nối đến máy chủ... (${index+1}/${ids.length})`;
-        
-        conn = peer.connect(ids[index], { reliable: false, ordered: false });
+        // Kết nối trực tiếp KHÔNG RETRY - giữ độ nhạy tối đa
+        conn = peer.connect(`trancuong_mame_${roomId}`, { reliable: false, ordered: false });
         
         const connectTimeout = setTimeout(() => {
             if (conn && !conn.open) {
-                connectWithRetry(ids, index + 1);
+                statusText.innerText = "❌ Kết nối thất bại!";
             }
-        }, 3000);
+        }, 5000);
         
         conn.on('open', function() {
             clearTimeout(connectTimeout);
             statusBar.classList.add("connected");
-            statusText.innerHTML = "<span class='status-dot'></span>⚡ TAY CẦM SIÊU TỐC ĐÃ SẴN SÀNG! ⚡";
+            statusText.innerHTML = "<span class='status-dot'></span>⚡ TAY CẦM SIÊU NHẠY! ⚡";
         });
         
         conn.on('close', function() {
             statusBar.classList.remove("connected");
-            statusText.innerText = "❌ Mất kết nối. Quét lại QR!";
+            statusText.innerText = "❌ Mất kết nối.";
         });
         
         conn.on('error', function(err) {
-            console.log("Lỗi kết nối:", err);
-            clearTimeout(connectTimeout);
-            connectWithRetry(ids, index + 1);
+            console.log("Lỗi:", err);
+            statusText.innerText = "❌ Lỗi kết nối!";
         });
-    }
+    });
     
     peer.on('error', function(err) {
         console.log("Peer error:", err);
-        clearTimeout(timeoutId);
-        statusText.innerText = "❌ Lỗi kết nối! Thử lại.";
+        statusText.innerText = "❌ Không thể kết nối!";
     });
 }
 
+// Gửi lệnh với cơ chế chống trùng lặp
 function guiLenhPhim(type, key, keyCode, code) {
-    if (conn && conn.open) {
-        conn.send({
-            sender: "EmulatorJS_P2",
-            type: type,
-            key: key,
-            keyCode: parseInt(keyCode),
-            code: code,
-            timestamp: Date.now()  // Thêm timestamp để debug
-        });
-    }
+    if (!conn || !conn.open) return;
+    
+    const keyId = `${key}_${type}`;
+    const now = Date.now();
+    const lastSend = pendingKeyStates.get(keyId);
+    
+    // Chống gửi trùng lặp trong 10ms
+    if (lastSend && (now - lastSend) < 10) return;
+    pendingKeyStates.set(keyId, now);
+    
+    conn.send({
+        sender: "EmulatorJS_P2",
+        type: type,
+        key: key,
+        keyCode: parseInt(keyCode),
+        code: code
+    });
 }
 
-// Phần còn lại giữ nguyên...
+// XỬ LÝ TOUCH SIÊU NHẠY - không bị loạn
 const activeButtons = new Set();
+let touchHandling = false;
+let pendingUpdates = false;
+
+function processTouchChanges() {
+    if (touchHandling) {
+        pendingUpdates = true;
+        return;
+    }
+    touchHandling = true;
+    
+    // Dùng requestAnimationFrame để đồng bộ với màn hình
+    requestAnimationFrame(() => {
+        // Không cần xử lý thêm vì handleTouch đã gửi trực tiếp
+        touchHandling = false;
+        if (pendingUpdates) {
+            pendingUpdates = false;
+            processTouchChanges();
+        }
+    });
+}
+
 function handleTouch(e) {
+    e.preventDefault(); // Ngăn scroll khi chạm
+    
     const currentTouches = new Set();
+    const changedButtons = { down: [], up: [] };
+    
+    // Lấy các nút đang được chạm
     for (let i = 0; i < e.touches.length; i++) {
         const touch = e.touches[i];
         const element = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -351,33 +351,52 @@ function handleTouch(e) {
             if (element.getAttribute('data-key')) currentTouches.add(element);
         }
     }
+    
+    // Tìm nút vừa thả
     activeButtons.forEach(btn => {
         if (!currentTouches.has(btn)) {
-            btn.classList.remove('active');
-            guiLenhPhim("keyup", btn.getAttribute('data-key'), btn.getAttribute('data-keycode'), btn.getAttribute('data-code'));
-            activeButtons.delete(btn);
+            changedButtons.up.push(btn);
         }
     });
+    
+    // Tìm nút vừa nhấn
     currentTouches.forEach(btn => {
         if (!activeButtons.has(btn)) {
-            btn.classList.add('active');
-            guiLenhPhim("keydown", btn.getAttribute('data-key'), btn.getAttribute('data-keycode'), btn.getAttribute('data-code'));
-            activeButtons.add(btn);
+            changedButtons.down.push(btn);
         }
     });
+    
+    // Xử lý thả trước
+    changedButtons.up.forEach(btn => {
+        btn.classList.remove('active');
+        guiLenhPhim("keyup", btn.getAttribute('data-key'), btn.getAttribute('data-keycode'), btn.getAttribute('data-code'));
+        activeButtons.delete(btn);
+    });
+    
+    // Xử lý nhấn sau
+    changedButtons.down.forEach(btn => {
+        btn.classList.add('active');
+        guiLenhPhim("keydown", btn.getAttribute('data-key'), btn.getAttribute('data-keycode'), btn.getAttribute('data-code'));
+        activeButtons.add(btn);
+    });
+    
+    processTouchChanges();
 }
 
+// Bắt sự kiện với độ ưu tiên cao nhất
 window.addEventListener('touchstart', handleTouch, { passive: false });
 window.addEventListener('touchmove', handleTouch, { passive: false });
 window.addEventListener('touchend', handleTouch, { passive: false });
 window.addEventListener('touchcancel', handleTouch, { passive: false });
 
+// LOGIC JOYSTICK - tối ưu tốc độ
 const joyContainer = document.getElementById('joy-container');
 const joyKnob = document.getElementById('joy-knob');
 let joystickActive = false;
 let joyTouchId = null;
 const maxDistance = 40; 
 let currentKeys = { i: false, k: false, j: false, l: false };
+let lastJoystickSend = 0;
 
 const keyMapJoy = {
     i: { key: "i", keyCode: 73, code: "KeyI" },
@@ -386,19 +405,37 @@ const keyMapJoy = {
     l: { key: "l", keyCode: 76, code: "KeyL" }
 };
 
+function guiLenhPhimNhanh(type, key, keyCode, code) {
+    if (!conn || !conn.open) return;
+    
+    // Giới hạn tần suất gửi cho joystick (60fps ~ 16ms)
+    const now = Date.now();
+    if (type === 'keydown' && (now - lastJoystickSend) < 12) return;
+    lastJoystickSend = now;
+    
+    conn.send({
+        sender: "EmulatorJS_P2",
+        type: type,
+        key: key,
+        keyCode: parseInt(keyCode),
+        code: code
+    });
+}
+
 function updateJoystickKeys(targetKeys) {
     for (let k in currentKeys) {
         if (targetKeys[k] && !currentKeys[k]) {
-            guiLenhPhim("keydown", keyMapJoy[k].key, keyMapJoy[k].keyCode, keyMapJoy[k].code);
+            guiLenhPhimNhanh("keydown", keyMapJoy[k].key, keyMapJoy[k].keyCode, keyMapJoy[k].code);
             currentKeys[k] = true;
         } else if (!targetKeys[k] && currentKeys[k]) {
-            guiLenhPhim("keyup", keyMapJoy[k].key, keyMapJoy[k].keyCode, keyMapJoy[k].code);
+            guiLenhPhimNhanh("keyup", keyMapJoy[k].key, keyMapJoy[k].keyCode, keyMapJoy[k].code);
             currentKeys[k] = false;
         }
     }
 }
 
 joyContainer.addEventListener('touchstart', (e) => {
+    e.preventDefault();
     if (joystickActive) return;
     const touch = e.changedTouches[0];
     joystickActive = true;
@@ -441,6 +478,7 @@ function moveJoystick(touch) {
         deltaY = (deltaY / distance) * maxDistance;
     }
     joyKnob.style.transform = `translate(${deltaX}px, ${deltaY}px)`;
+    
     let nextKeys = { i: false, k: false, j: false, l: false };
     const threshold = 15; 
     if (distance > threshold) {
@@ -459,6 +497,7 @@ function moveJoystick(touch) {
     updateJoystickKeys(nextKeys);
 }
 
+// XỬ LÝ NÚT ĐÓNG
 (function() {
     const closeBtn = document.getElementById("floating-close-btn");
     let isDragging = false;
@@ -467,6 +506,7 @@ function moveJoystick(touch) {
     let btnTouchId = null;
 
     closeBtn.addEventListener("touchstart", (e) => {
+        e.stopPropagation();
         if (isDragging) return;
         const touch = e.changedTouches[0];
         isDragging = true;
@@ -479,7 +519,7 @@ function moveJoystick(touch) {
         startTop = rect.top;
         closeBtn.style.transform = "scale(0.95) translateY(4px)";
         closeBtn.style.boxShadow = "0 1px 0px #000, 0 2px 4px rgba(0,0,0,0.4)";
-    }, { passive: true });
+    }, { passive: false });
 
     window.addEventListener("touchmove", (e) => {
         if (!isDragging) return;
@@ -518,7 +558,7 @@ function moveJoystick(touch) {
                 closeBtn.style.transform = "none";
                 closeBtn.style.boxShadow = "0 5px 0px #990000, 0 6px 10px rgba(0,0,0,0.5)";
                 if (!hasMoved) {
-                    window.location.href = "index.html";
+                    window.location.href = "mame.html";
                 }
                 break;
             }
@@ -526,10 +566,12 @@ function moveJoystick(touch) {
     });
 })();
 
+// Chặn pinch zoom
 document.documentElement.addEventListener('touchstart', (e) => {
     if (e.touches.length > 1) e.preventDefault();
 }, { passive: false });
 
+// Chặn chuột phải và các phím tắt
 document.addEventListener('contextmenu', function(e) { e.preventDefault(); }, false);
 document.addEventListener('selectstart', function(e) { e.preventDefault(); });
 document.addEventListener('keydown', function(e) {
