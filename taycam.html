@@ -306,17 +306,23 @@ function ketNoiPhong(roomId) {
 }
 
 // ===== GỬI LỆNH QUA FIREBASE =====
+
+
+const COMMAND_QUEUE = [];
+let isSending = false;
+
 function guiLenhPhim(type, key, keyCode, code) {
     if (!isConnected || !currentRoomId) return;
     
+    // GỬI NGAY, KHÔNG CHỜ
     const commandRef = database.ref(`game_rooms/${currentRoomId}/commands`).push();
     commandRef.set({
         type: type,
         key: key,
         keyCode: parseInt(keyCode),
-        code: code,
-        timestamp: firebase.database.ServerValue.TIMESTAMP
-    }).catch(e => console.log("Lỗi gửi lệnh:", e));
+        code: code
+        // BỎ timestamp để nhanh hơn
+    });
 }
 
 // XỬ LÝ TOUCH
