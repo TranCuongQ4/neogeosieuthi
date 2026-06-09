@@ -276,7 +276,7 @@ function ketNoiMayChuPeerJS(scannedRoomId) {
     peer = new Peer(iceServersConfig);
 
     peer.on('open', function(id) {
-        // CHUẨN HÓA: Tự động kiểm tra cấu trúc chuỗi kết nối an toàn
+        // CHUẨN HÓA: Loại bỏ khoảng trắng thừa thu được từ camera và kiểm tra cấu trúc chuỗi an toàn
         let finalPeerId = scannedRoomId.trim();
         if (!finalPeerId.startsWith("trancuong_neogeo_")) {
             finalPeerId = `trancuong_neogeo_${finalPeerId}`;

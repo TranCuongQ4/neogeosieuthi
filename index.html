@@ -491,9 +491,9 @@ function kichHoatMayChuPC() {
     const statusText = document.getElementById("status-text");
     if (qrcodeCreated) return;
 
-    // Cấu hình ICE với nhiều STUN server
+    // Định nghĩa sẵn chuỗi ID phòng chuẩn hóa
     const targetPeerId = `trancuong_neogeo_${roomId}`;
-    
+
     peer = new Peer(targetPeerId, {
         config: {
             iceServers: [
@@ -510,7 +510,8 @@ function kichHoatMayChuPC() {
         statusText.innerText = `Chờ kết nối... (Mã: ${roomId})`;
         const qrDiv = document.getElementById("qrcode");
         qrDiv.innerHTML = "";
-        // CHUẨN HÓA: Mã hóa toàn bộ chuỗi ID đầy đủ vào QR để máy phụ đọc trực tiếp
+        
+        // CHUẨN HÓA: Mã hóa toàn bộ chuỗi ID định danh đầy đủ vào QR để máy phụ đọc trực tiếp không bị lỗi ghép chuỗi
         new QRCode(qrDiv, { text: targetPeerId, width: 130, height: 130 });
         qrcodeCreated = true;
     });
