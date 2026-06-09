@@ -20,13 +20,13 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 
 .shoulder-area { display: flex; justify-content: space-between; width: 100%; padding: 0 10px; }
 .shoulder-btn { 
-    width: 150px; 
-    height: 55px; 
+    width: 110px; 
+    height: 40px; 
     background: linear-gradient(180deg, #3a4454, #242b35); 
     border: 1px solid #4e5a6f; 
     color: #fff; 
     font-weight: bold; 
-    font-size: 20px;
+    font-size: 16px;
     border-radius: 20px 20px 8px 8px; 
     display: flex; 
     align-items: center; 
@@ -46,8 +46,8 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 
 .joystick-container {
     position: relative;
-    width: 240px;
-    height: 240px;
+    width: 160px;
+    height: 160px;
     background: radial-gradient(circle, #1a1f26 40%, #0d1117 100%);
     border: 4px solid #2d3540;
     border-radius: 50%;
@@ -58,8 +58,8 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 }
 .joystick-knob {
     position: absolute;
-    width: 110px;
-    height: 110px;
+    width: 76px;
+    height: 76px;
     background: radial-gradient(circle, #485566 0%, #29323d 80%, #1c222a 100%);
     border: 2px solid #5c6d82;
     border-radius: 50%;
@@ -104,13 +104,13 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
     box-shadow: 0 1px 0px #991b1b, 0 1px 3px rgba(0,0,0,0.4);
 }
 
-.snes-diamond { position: relative; width: 280px; height: 280px; }
+.snes-diamond { position: relative; width: 170px; height: 170px; }
 .action-btn { 
     position: absolute; 
-    width: 90px; 
-    height: 90px; 
+    width: 56px; 
+    height: 56px; 
     border-radius: 50%; 
-    font-size: 32px; 
+    font-size: 20px; 
     font-weight: bold; 
     display: flex; 
     align-items: center; 
@@ -119,10 +119,10 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
     touch-action: manipulation;
 }
 
-/* ===== ĐÃ ĐỔI VỊ TRÍ NÚT X ↔ Y và A ↔ B VÀ TĂNG KÍCH THƯỚC TO HẾT CỠ ===== */
+/* ===== ĐÃ ĐỔI VỊ TRÍ NÚT X ↔ Y và A ↔ B ===== */
 /* Nút X (Màu Xanh Dương) - CHUYỂN LÊN TRÊN CÙNG */
 .btn-x { 
-    top: 0; left: 95px; 
+    top: 0; left: 57px; 
     background: linear-gradient(180deg, #5dade2, #2e86c1); 
     border: 2px solid #85c1e9; color: #fff; 
     box-shadow: 0 6px 0px #1b4f72, 0 6px 12px rgba(0,0,0,0.5);
@@ -130,7 +130,7 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 
 /* Nút Y (Màu Tím) - CHUYỂN SANG BÊN TRÁI */
 .btn-y { 
-    top: 95px; left: 0; 
+    top: 57px; left: 0; 
     background: linear-gradient(180deg, #bb8fce, #7d3c98); 
     border: 2px solid #d7bde2; color: #fff; 
     box-shadow: 0 6px 0px #4a235a, 0 6px 12px rgba(0,0,0,0.5);
@@ -138,7 +138,7 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 
 /* Nút A (Màu Đỏ) - CHUYỂN QUA BÊN PHẢI */
 .btn-a { 
-    top: 95px; right: 0; 
+    top: 57px; right: 0; 
     background: linear-gradient(180deg, #f1948a, #cb4335); 
     border: 2px solid #f5b7b1; color: #fff; 
     box-shadow: 0 6px 0px #78281f, 0 6px 12px rgba(0,0,0,0.5);
@@ -146,7 +146,7 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 
 /* Nút B (Màu Vàng Cam) - CHUYỂN XUỐNG DƯỚI CÙNG */
 .btn-b { 
-    bottom: 0; left: 95px; 
+    bottom: 0; left: 57px; 
     background: linear-gradient(180deg, #f8c471, #d35400); 
     border: 2px solid #fad7a0; color: #fff; 
     box-shadow: 0 6px 0px #7e5109, 0 6px 12px rgba(0,0,0,0.5);
@@ -212,6 +212,7 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
     </div>
 
     <div class="snes-diamond">
+        <!-- ĐÃ ĐỔI VỊ TRÍ: X lên trên, Y sang trái, A sang phải, B xuống dưới -->
         <div class="action-btn btn-x" data-key="f" data-keycode="70" data-code="KeyF">X</div>
         <div class="action-btn btn-y" data-key="c" data-keycode="67" data-code="KeyC">Y</div>
         <div class="action-btn btn-a" data-key="v" data-keycode="86" data-code="KeyV">A</div>
@@ -398,7 +399,7 @@ const joyContainer = document.getElementById('joy-container');
 const joyKnob = document.getElementById('joy-knob');
 let joystickActive = false;
 let joyTouchId = null;
-const maxDistance = 60; 
+const maxDistance = 40; 
 let currentKeys = { i: false, k: false, j: false, l: false };
 
 const keyMapJoy = {
