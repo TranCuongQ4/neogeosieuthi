@@ -177,9 +177,6 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 #reader { width: 260px; height: 260px; background: #000; border: 2px solid #00ffcc; border-radius: 8px; overflow: hidden; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
-<script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -221,20 +218,12 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 </div>
 
 <script>
-// CẤU HÌNH FIREBASE
-const firebaseConfig = {
-    databaseURL: "https://cuongdata-default-rtdb.asia-southeast1.firebasedatabase.app/"
-};
+// === CLOUDFLARE WORKER WEBSOCKET RELAY ===
+const WORKER_URL = 'https://fancy-hill-c705game-relay.tranmanhcuonghappy.workers.dev';
 
-firebase.initializeApp(firebaseConfig);
-const database = firebase.database();
-
-let peer = null;
-let conn = null;
+let ws = null;
 let html5QrcodeScanner = null;
-let currentRoomId = null;
-let roomRef = null;
-let reconnectAttempts = 0;
+let isConnected = false;
 
 function moCameraQuet() {
     document.getElementById("camera-overlay").style.display = "flex";
@@ -242,7 +231,10 @@ function moCameraQuet() {
     html5QrcodeScanner.start(
         { facingMode: "environment" },
         { fps: 30, qrbox: { width: 200, height: 200 } },
-        (qrText) => { dongCameraQuet(); ketNoiMayChuQuaFirebase(qrText.trim()); },
+        (qrText) => { 
+            dongCameraQuet(); 
+            ketNoiWebSocket(qrText.trim()); 
+        },
         () => {}
     ).catch(() => {
         alert("Không mở được camera!");
@@ -255,122 +247,62 @@ function dongCameraQuet() {
     if (html5QrcodeScanner) { html5QrcodeScanner.stop().catch(()=>{}); }
 }
 
-function ketNoiMayChuQuaFirebase(scannedRoomId) {
+function ketNoiWebSocket(wsUrl) {
     const statusText = document.getElementById("status-text");
-    statusText.innerText = `Đang kết nối phòng...`;
+    statusText.innerText = "Đang kết nối...";
     
-    currentRoomId = scannedRoomId;
-    roomRef = database.ref(`game_rooms/${currentRoomId}`);
-    
-    roomRef.once('value').then((snapshot) => {
-        const roomData = snapshot.val();
+    try {
+        ws = new WebSocket(wsUrl);
         
-        if (!roomData || !roomData.hostId) {
-            statusText.innerText = "❌ Phòng không tồn tại!";
-            return;
-        }
+        ws.onopen = () => {
+            statusText.innerHTML = "<span class='status-dot'></span>Đã kết nối, đang bắt tay...";
+        };
         
-        if (roomData.clientId && roomData.clientId !== null) {
-            statusText.innerText = "❌ Phòng đã có người kết nối!";
-            return;
-        }
-        
-        statusText.innerText = "Đang khởi tạo kết nối...";
-        
-        // ⭐ QUAN TRỌNG: ĐÃ THÊM TURN SERVER openrelay.metered.ca ⭐
-        peer = new Peer({
-            config: {
-                iceServers: [
-                    // STUN servers (giữ nguyên)
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' },
-                    { urls: 'stun:stun3.l.google.com:19302' },
-                    { urls: 'stun:stun4.l.google.com:19302' },
-                    // TURN servers - KHÔNG CẦN ĐĂNG KÝ, DÙNG NGAY
-                    {
-                        urls: 'turn:openrelay.metered.ca:80',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:443',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    },
-                    {
-                        urls: 'turn:openrelay.metered.ca:3478',
-                        username: 'openrelayproject',
-                        credential: 'openrelayproject'
-                    }
-                ]
-            }
-        });
-        
-        peer.on('open', (clientPeerId) => {
-            roomRef.update({ 
-                clientId: clientPeerId,
-                status: "connected",
-                connectedAt: firebase.database.ServerValue.TIMESTAMP
-            }).then(() => {
-                statusText.innerHTML = "<span class='status-dot'></span>⏳ Đang kết nối Peer...";
+        ws.onmessage = (event) => {
+            try {
+                const message = JSON.parse(event.data);
                 
-                conn = peer.connect(roomData.hostId);
-                
-                conn.on('open', () => {
+                if (message.type === 'peer_joined') {
                     statusText.innerHTML = "<span class='status-dot'></span>⚡ TAY CẦM SIÊU NHẠY! ⚡";
                     document.getElementById("status-bar").classList.add("connected");
-                    reconnectAttempts = 0;
-                });
-                
-                conn.on('close', () => {
-                    statusText.innerHTML = "<span class='status-dot'></span>❌ Mất kết nối! Đang thử lại...";
+                    isConnected = true;
+                }
+                else if (message.type === 'peer_left') {
+                    statusText.innerHTML = "<span class='status-dot'></span>❌ Mất kết nối!";
                     document.getElementById("status-bar").classList.remove("connected");
-                    
-                    // Tự động kết nối lại
-                    if (reconnectAttempts < 10) {
-                        reconnectAttempts++;
-                        setTimeout(() => {
-                            if (roomRef) {
-                                roomRef.once('value').then((snapshot) => {
-                                    const data = snapshot.val();
-                                    if (data && data.hostId && (!conn || !conn.open)) {
-                                        conn = peer.connect(data.hostId);
-                                    }
-                                });
-                            }
-                        }, 3000);
-                    }
-                });
-                
-                conn.on('error', (err) => {
-                    console.error("Connection error:", err);
-                    statusText.innerText = "❌ Lỗi kết nối! Thử lại...";
-                });
-            });
-        });
+                    isConnected = false;
+                }
+            } catch(e) {
+                console.error("Lỗi xử lý message:", e);
+            }
+        };
         
-        peer.on('error', (err) => {
-            statusText.innerText = "❌ Peer error!";
-            console.error(err);
-        });
+        ws.onerror = (err) => {
+            console.error("WebSocket error:", err);
+            statusText.innerText = "❌ Lỗi kết nối!";
+        };
         
-    }).catch((err) => {
-        statusText.innerText = "❌ Lỗi truy cập phòng!";
+        ws.onclose = () => {
+            if (isConnected) {
+                statusText.innerHTML = "<span class='status-dot'></span>❌ Mất kết nối!";
+                document.getElementById("status-bar").classList.remove("connected");
+                isConnected = false;
+            }
+        };
+        
+    } catch(err) {
         console.error(err);
-    });
+        statusText.innerText = "❌ Lỗi kết nối!";
+    }
 }
 
-// ===== GỬI LỆNH =====
+// ===== GỬI LỆNH QUA WEBSOCKET =====
 function guiLenhPhim(type, key, keyCode, code) {
-    if (!conn || !conn.open) return;
-    conn.send({
-        sender: "EmulatorJS_P2",
-        type: type,
-        key: key,
-        keyCode: parseInt(keyCode),
-        code: code
-    });
+    if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) return;
+    
+    ws.send(JSON.stringify({
+        payload: { type, key, keyCode, code }
+    }));
 }
 
 // XỬ LÝ TOUCH
@@ -452,14 +384,11 @@ const keyMapJoy = {
 };
 
 function guiLenhPhimJoy(type, key, keyCode, code) {
-    if (!conn || !conn.open) return;
-    conn.send({
-        sender: "EmulatorJS_P2",
-        type: type,
-        key: key,
-        keyCode: parseInt(keyCode),
-        code: code
-    });
+    if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) return;
+    
+    ws.send(JSON.stringify({
+        payload: { type, key, keyCode, code }
+    }));
 }
 
 function updateJoystickKeys(targetKeys) {
