@@ -316,6 +316,7 @@ function ketNoiMayChuQuaFirebase(scannedRoomId) {
                     // Xóa phòng Firebase sau khi kết nối thành công
                     setTimeout(() => {
                         if (roomRef) roomRef.remove().catch(e=>console.log("Xóa phòng sau kết nối:", e));
+                        roomRef = null;
                     }, 2000);
                 });
                 

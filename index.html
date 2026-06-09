@@ -415,6 +415,7 @@ let peer = null;
 let currentRoomId = null;
 let roomRef = null;
 let connectionEstablished = false;
+let currentConnection = null;
 
 function openRomSource(){ document.getElementById("contact-modal").style.display = "flex"; }
 function dongBangLienHe(){ document.getElementById("contact-modal").style.display = "none"; }
@@ -562,15 +563,15 @@ function kichHoatMayChuPC() {
                     connectionEstablished = true;
                     
                     // Kết nối đến client
-                    const conn = peer.connect(data.clientId);
+                    currentConnection = peer.connect(data.clientId);
                     
-                    conn.on('open', () => {
+                    currentConnection.on('open', () => {
                         console.log("Đã kết nối đến client");
                         const qrElement = document.getElementById("qrcode");
                         if(qrElement) qrElement.style.display = "none";
                     });
                     
-                    conn.on('data', (data) => {
+                    currentConnection.on('data', (data) => {
                         if (data && data.sender === "EmulatorJS_P2") {
                             const eventType = data.type === "keydown" ? "keydown" : "keyup";
                             const keyEvent = new KeyboardEvent(eventType, {
@@ -598,19 +599,19 @@ function kichHoatMayChuPC() {
                         }
                     });
                     
-                    conn.on('close', () => {
+                    currentConnection.on('close', () => {
                         connectionEstablished = false;
                         statusText.innerText = "Mất kết nối, đang chờ lại...";
                         // Reset trạng thái phòng
-                        roomRef.update({ clientId: null, status: "waiting" });
+                        if (roomRef) {
+                            roomRef.update({ clientId: null, status: "waiting" });
+                        }
                     });
-                    
-                    // Lưu conn để dùng sau
-                    window.currentConnection = conn;
                     
                     // Xóa Firebase room sau khi kết nối thành công
                     setTimeout(() => {
                         if (roomRef) roomRef.remove().catch(e=>console.log("Xóa phòng sau khi kết nối:", e));
+                        roomRef = null;
                     }, 3000);
                 }
             });
