@@ -297,6 +297,8 @@ h1{
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -397,10 +399,22 @@ h1{
 </div>
 
 <script>
+// CẤU HÌNH FIREBASE
+const firebaseConfig = {
+    databaseURL: "https://cuongdata-default-rtdb.asia-southeast1.firebasedatabase.app/"
+};
+
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
 document.addEventListener("contextmenu",e=>{ e.preventDefault(); });
 document.addEventListener("selectstart",e=>{ e.preventDefault(); });
 
 let isLoaderScriptLoaded = false;
+let peer = null;
+let currentRoomId = null;
+let roomRef = null;
+let connectionEstablished = false;
 
 function openRomSource(){ document.getElementById("contact-modal").style.display = "flex"; }
 function dongBangLienHe(){ document.getElementById("contact-modal").style.display = "none"; }
@@ -446,7 +460,16 @@ function startGame(romUrl, romName = ""){
     }
 }
 
-function forceCloseGame(){ window.location.reload(); }
+function forceCloseGame(){ 
+    // Xóa phòng Firebase nếu còn
+    if (roomRef) {
+        roomRef.remove().catch(e=>console.log("Lỗi xóa phòng:", e));
+    }
+    if (peer) {
+        peer.destroy();
+    }
+    window.location.reload(); 
+}
 
 function makeDraggable(element){
     let isDragging = false, startX, startY, startLeft, startTop, hasMoved = false;
@@ -481,20 +504,23 @@ closeBtn.addEventListener("click",()=> forceCloseGame());
 function moBangHuongDan(){ document.getElementById("guide-modal").style.display = "flex"; }
 function dongBangHuongDan(){ document.getElementById("guide-modal").style.display = "none"; }
 
-// ========== PEERJS - MÁY CHỦ ==========
-let peer;
-let qrcodeCreated = false;
-const roomId = Math.floor(1000 + Math.random() * 9000).toString();
-
+// ========== KẾT NỐI QUA FIREBASE + PEERJS ==========
 function kichHoatMayChuPC() {
+    if (connectionEstablished) {
+        alert("Đã có kết nối rồi!");
+        return;
+    }
+    
+    // Tạo ID phòng ngẫu nhiên
+    const roomId = Math.floor(1000 + Math.random() * 9000).toString();
+    currentRoomId = `neogeo_room_${roomId}`;
+    
     document.getElementById("qrcode-area").style.display = "block";
     const statusText = document.getElementById("status-text");
-    if (qrcodeCreated) return;
-
-    // Định nghĩa sẵn chuỗi ID phòng chuẩn hóa
-    const targetPeerId = `trancuong_neogeo_${roomId}`;
-
-    peer = new Peer(targetPeerId, {
+    statusText.innerText = "Đang khởi tạo máy chủ...";
+    
+    // Tạo Peer với ID ngẫu nhiên (sẽ gửi qua Firebase)
+    peer = new Peer({
         config: {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -505,53 +531,107 @@ function kichHoatMayChuPC() {
             ]
         }
     });
-
-    peer.on('open', function(id) {
-        statusText.innerText = `Chờ kết nối... (Mã: ${roomId})`;
-        const qrDiv = document.getElementById("qrcode");
-        qrDiv.innerHTML = "";
+    
+    peer.on('open', function(hostPeerId) {
+        statusText.innerText = "Đang tạo phòng trên Firebase...";
         
-        // CHUẨN HÓA: Mã hóa toàn bộ chuỗi ID định danh đầy đủ vào QR để máy phụ đọc trực tiếp không bị lỗi ghép chuỗi
-        new QRCode(qrDiv, { text: targetPeerId, width: 130, height: 130 });
-        qrcodeCreated = true;
-    });
-
-    peer.on('connection', function(conn) {
-        conn.on('open', function() {
-            statusText.innerHTML = "✅ <span style='color:#00ffcc;font-weight:bold;'>ĐÃ KẾT NỐI TAY CẦM P2!</span>";
-            const qrElement = document.getElementById("qrcode");
-            if(qrElement) qrElement.style.display = "none";
-        });
-
-        conn.on('data', function(data) {
-            if (data && data.sender === "EmulatorJS_P2") {
-                const eventType = data.type === "keydown" ? "keydown" : "keyup";
-                const keyEvent = new KeyboardEvent(eventType, {
-                    key: data.key,
-                    keyCode: data.keyCode,
-                    code: data.code,
-                    which: data.keyCode,
-                    bubbles: true,
-                    cancelable: true,
-                    view: window
-                });
-                document.dispatchEvent(keyEvent);
-                const emuEl = document.getElementById("emulator");
-                if(emuEl) emuEl.dispatchEvent(keyEvent);
-                
-                if(window.EJS_emulator && window.EJS_emulator.gameManager && window.EJS_emulator.gameManager.controls) {
-                    try {
-                        if(data.type === "keydown") {
-                            window.EJS_emulator.gameManager.controls.keyDown(data.keyCode, data.key);
-                        } else {
-                            window.EJS_emulator.gameManager.controls.keyUp(data.keyCode, data.key);
+        // Tạo phòng trên Firebase chứa Peer ID của host
+        roomRef = database.ref(`game_rooms/${currentRoomId}`);
+        
+        const roomData = {
+            hostId: hostPeerId,
+            createdAt: firebase.database.ServerValue.TIMESTAMP,
+            status: "waiting",
+            clientId: null
+        };
+        
+        roomRef.set(roomData).then(() => {
+            statusText.innerText = `Phòng: ${roomId} - Chờ kết nối...`;
+            
+            // Tạo mã QR với ID phòng
+            const qrDiv = document.getElementById("qrcode");
+            qrDiv.innerHTML = "";
+            new QRCode(qrDiv, { text: currentRoomId, width: 130, height: 130 });
+            
+            // Lắng nghe sự thay đổi phòng để biết khi có client kết nối
+            roomRef.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data && data.clientId && !connectionEstablished) {
+                    // Đã có client kết nối, thiết lập Peer connection
+                    statusText.innerHTML = "✅ <span style='color:#00ffcc;font-weight:bold;'>ĐÃ KẾT NỐI TAY CẦM P2!</span>";
+                    connectionEstablished = true;
+                    
+                    // Kết nối đến client
+                    const conn = peer.connect(data.clientId);
+                    
+                    conn.on('open', () => {
+                        console.log("Đã kết nối đến client");
+                        const qrElement = document.getElementById("qrcode");
+                        if(qrElement) qrElement.style.display = "none";
+                    });
+                    
+                    conn.on('data', (data) => {
+                        if (data && data.sender === "EmulatorJS_P2") {
+                            const eventType = data.type === "keydown" ? "keydown" : "keyup";
+                            const keyEvent = new KeyboardEvent(eventType, {
+                                key: data.key,
+                                keyCode: data.keyCode,
+                                code: data.code,
+                                which: data.keyCode,
+                                bubbles: true,
+                                cancelable: true,
+                                view: window
+                            });
+                            document.dispatchEvent(keyEvent);
+                            const emuEl = document.getElementById("emulator");
+                            if(emuEl) emuEl.dispatchEvent(keyEvent);
+                            
+                            if(window.EJS_emulator && window.EJS_emulator.gameManager && window.EJS_emulator.gameManager.controls) {
+                                try {
+                                    if(data.type === "keydown") {
+                                        window.EJS_emulator.gameManager.controls.keyDown(data.keyCode, data.key);
+                                    } else {
+                                        window.EJS_emulator.gameManager.controls.keyUp(data.keyCode, data.key);
+                                    }
+                                } catch(e){}
+                            }
                         }
-                    } catch(e){}
+                    });
+                    
+                    conn.on('close', () => {
+                        connectionEstablished = false;
+                        statusText.innerText = "Mất kết nối, đang chờ lại...";
+                        // Reset trạng thái phòng
+                        roomRef.update({ clientId: null, status: "waiting" });
+                    });
+                    
+                    // Lưu conn để dùng sau
+                    window.currentConnection = conn;
+                    
+                    // Xóa Firebase room sau khi kết nối thành công
+                    setTimeout(() => {
+                        if (roomRef) roomRef.remove().catch(e=>console.log("Xóa phòng sau khi kết nối:", e));
+                    }, 3000);
                 }
-            }
+            });
+        }).catch(err => {
+            statusText.innerText = "Lỗi tạo phòng!";
+            console.error(err);
         });
+    });
+    
+    peer.on('error', (err) => {
+        console.error("Peer error:", err);
+        document.getElementById("status-text").innerText = "Lỗi: " + err.type;
     });
 }
+
+// Xóa phòng khi trang đóng
+window.addEventListener('beforeunload', () => {
+    if (roomRef) {
+        roomRef.remove().catch(e=>console.log("Xóa phòng khi đóng trang:", e));
+    }
+});
 </script>
 </body>
 </html>
