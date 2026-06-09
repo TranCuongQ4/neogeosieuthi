@@ -412,7 +412,7 @@ function guiLenhPhimJoy(type, key, keyCode, code) {
         key: key,
         keyCode: parseInt(keyCode),
         code: code,
-        timestamp: firebase.database.ServerValue.TIMESTAMP
+        
     }).catch(e => console.log("Lỗi gửi lệnh:", e));
 }
 
