@@ -177,6 +177,8 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 #reader { width: 260px; height: 260px; background: #000; border: 2px solid #00ffcc; border-radius: 8px; overflow: hidden; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -218,13 +220,19 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 </div>
 
 <script>
-// === CLOUDFLARE WORKER WEBSOCKET RELAY ===
-const WORKER_URL = 'https://fragrant-hall-e77cdurableobject.tranmanhcuonghappy.workers.dev';
-const WS_URL = WORKER_URL.replace(/^https/, 'wss');
+// === FIREBASE RTDB - KẾT NỐI ỔN ĐỊNH ===
+const firebaseConfig = {
+    databaseURL: "https://cuongdata-default-rtdb.asia-southeast1.firebasedatabase.app/"
+};
 
-let ws = null;
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
+
 let html5QrcodeScanner = null;
+let currentRoomId = null;
+let roomRef = null;
 let isConnected = false;
+let keepAliveInterval = null;
 
 function moCameraQuet() {
     document.getElementById("camera-overlay").style.display = "flex";
@@ -234,7 +242,7 @@ function moCameraQuet() {
         { fps: 30, qrbox: { width: 200, height: 200 } },
         (qrText) => { 
             dongCameraQuet(); 
-            ketNoiWebSocket(qrText.trim()); 
+            ketNoiPhong(qrText.trim()); 
         },
         () => {}
     ).catch(() => {
@@ -248,66 +256,68 @@ function dongCameraQuet() {
     if (html5QrcodeScanner) { html5QrcodeScanner.stop().catch(()=>{}); }
 }
 
-function ketNoiWebSocket(wsUrl) {
+function ketNoiPhong(roomId) {
     const statusText = document.getElementById("status-text");
-    statusText.innerText = "Đang kết nối...";
+    statusText.innerText = `Đang kết nối phòng ${roomId}...`;
     
-    try {
-        ws = new WebSocket(wsUrl);
+    currentRoomId = roomId;
+    roomRef = database.ref(`game_rooms/${roomId}`);
+    
+    // Kiểm tra phòng tồn tại
+    roomRef.once('value').then((snapshot) => {
+        const roomData = snapshot.val();
         
-        ws.onopen = () => {
-            statusText.innerHTML = "<span class='status-dot'></span>Đã kết nối, đang bắt tay...";
-        };
+        if (!roomData) {
+            statusText.innerText = "❌ Phòng không tồn tại!";
+            return;
+        }
         
-        ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
-                
-                if (message.type === 'peer_joined') {
-                    statusText.innerHTML = "<span class='status-dot'></span>⚡ TAY CẦM SIÊU NHẠY! ⚡";
-                    document.getElementById("status-bar").classList.add("connected");
-                    isConnected = true;
-                }
-                else if (message.type === 'peer_left') {
-                    statusText.innerHTML = "<span class='status-dot'></span>❌ Mất kết nối!";
-                    document.getElementById("status-bar").classList.remove("connected");
-                    isConnected = false;
-                }
-            } catch(e) {
-                console.error("Lỗi xử lý message:", e);
+        // Đánh dấu player đã kết nối
+        roomRef.update({ 
+            playerConnected: true,
+            lastActive: firebase.database.ServerValue.TIMESTAMP
+        });
+        
+        statusText.innerHTML = "<span class='status-dot'></span>⚡ TAY CẦM SIÊU NHẠY! ⚡";
+        document.getElementById("status-bar").classList.add("connected");
+        isConnected = true;
+        
+        // Cập nhật thời gian hoạt động mỗi 30 giây
+        keepAliveInterval = setInterval(() => {
+            if (roomRef) {
+                roomRef.update({ lastActive: firebase.database.ServerValue.TIMESTAMP });
             }
-        };
+        }, 30000);
         
-        ws.onerror = (err) => {
-            console.error("WebSocket error:", err);
-            statusText.innerText = "❌ Lỗi kết nối!";
-        };
-        
-        ws.onclose = () => {
-            if (isConnected) {
-                statusText.innerHTML = "<span class='status-dot'></span>❌ Mất kết nối!";
+        // Lắng nghe khi phòng bị xóa (host thoát)
+        roomRef.on('value', (snapshot) => {
+            if (!snapshot.exists() && isConnected) {
+                statusText.innerHTML = "<span class='status-dot'></span>❌ Mất kết nối với máy chủ!";
                 document.getElementById("status-bar").classList.remove("connected");
                 isConnected = false;
+                if (keepAliveInterval) clearInterval(keepAliveInterval);
             }
-        };
+        });
         
-    } catch(err) {
-        console.error(err);
+    }).catch((err) => {
+        console.error("Lỗi kết nối:", err);
         statusText.innerText = "❌ Lỗi kết nối!";
-    }
+    });
 }
 
-// ===== GỬI LỆNH QUA WEBSOCKET =====
+// ===== GỬI LỆNH QUA FIREBASE =====
 function guiLenhPhim(type, key, keyCode, code) {
-    if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) return;
+    if (!isConnected || !currentRoomId) return;
     
-    ws.send(JSON.stringify({
-        payload: { type, key, keyCode, code }
-    }));
+    const commandRef = database.ref(`game_rooms/${currentRoomId}/commands`).push();
+    commandRef.set({
+        type: type,
+        key: key,
+        keyCode: parseInt(keyCode),
+        code: code,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    }).catch(e => console.log("Lỗi gửi lệnh:", e));
 }
-
-
-
 
 // XỬ LÝ TOUCH
 const activeButtons = new Set();
@@ -388,11 +398,16 @@ const keyMapJoy = {
 };
 
 function guiLenhPhimJoy(type, key, keyCode, code) {
-    if (!ws || ws.readyState !== WebSocket.OPEN || !isConnected) return;
+    if (!isConnected || !currentRoomId) return;
     
-    ws.send(JSON.stringify({
-        payload: { type, key, keyCode, code }
-    }));
+    const commandRef = database.ref(`game_rooms/${currentRoomId}/commands`).push();
+    commandRef.set({
+        type: type,
+        key: key,
+        keyCode: parseInt(keyCode),
+        code: code,
+        timestamp: firebase.database.ServerValue.TIMESTAMP
+    }).catch(e => console.log("Lỗi gửi lệnh:", e));
 }
 
 function updateJoystickKeys(targetKeys) {
@@ -532,6 +547,12 @@ function moveJoystick(touch) {
                 closeBtn.style.transform = "none";
                 closeBtn.style.boxShadow = "0 5px 0px #990000, 0 6px 10px rgba(0,0,0,0.5)";
                 if (!hasMoved) {
+                    // Ngắt kết nối Firebase trước khi thoát
+                    if (roomRef) {
+                        roomRef.update({ playerConnected: false });
+                        roomRef = null;
+                    }
+                    if (keepAliveInterval) clearInterval(keepAliveInterval);
                     window.location.href = "index.html";
                 }
                 break;
@@ -539,6 +560,16 @@ function moveJoystick(touch) {
         }
     });
 })();
+
+// Ngắt kết nối khi đóng trang
+window.addEventListener('beforeunload', () => {
+    if (roomRef) {
+        roomRef.update({ playerConnected: false });
+    }
+    if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
+    }
+});
 
 document.documentElement.addEventListener('touchstart', (e) => {
     if (e.touches.length > 1) e.preventDefault();

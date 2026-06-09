@@ -296,6 +296,8 @@ h1{
 }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
 </head>
 <body>
 
@@ -396,14 +398,20 @@ h1{
 </div>
 
 <script>
-// === CLOUDFLARE WORKER WEBSOCKET RELAY ===
-const WORKER_URL = 'https://fragrant-hall-e77cdurableobject.tranmanhcuonghappy.workers.dev';
-const WS_URL = WORKER_URL.replace(/^https/, 'wss');
+// === FIREBASE RTDB - KẾT NỐI ỔN ĐỊNH ===
+const firebaseConfig = {
+    databaseURL: "https://cuongdata-default-rtdb.asia-southeast1.firebasedatabase.app/"
+};
+
+firebase.initializeApp(firebaseConfig);
+const database = firebase.database();
 
 let isLoaderScriptLoaded = false;
-let ws = null;
+let roomRef = null;
+let commandRef = null;
 let currentRoomId = null;
 let isConnected = false;
+let keepAliveInterval = null;
 
 document.addEventListener("contextmenu",e=>{ e.preventDefault(); });
 document.addEventListener("selectstart",e=>{ e.preventDefault(); });
@@ -453,8 +461,12 @@ function startGame(romUrl, romName = ""){
 }
 
 function forceCloseGame(){ 
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.close();
+    // Xóa phòng Firebase
+    if (roomRef) {
+        roomRef.remove().catch(e=>console.log("Lỗi xóa phòng:", e));
+    }
+    if (keepAliveInterval) {
+        clearInterval(keepAliveInterval);
     }
     window.location.reload(); 
 }
@@ -492,100 +504,115 @@ closeBtn.addEventListener("click",()=> forceCloseGame());
 function moBangHuongDan(){ document.getElementById("guide-modal").style.display = "flex"; }
 function dongBangHuongDan(){ document.getElementById("guide-modal").style.display = "none"; }
 
-// ========== KẾT NỐI QUA CLOUDFLARE WORKER WEBSOCKET ==========
+// HÀM DỌN DẸP PHÒNG CŨ (QUÁ 1 NGÀY)
+async function xoaPhongCu() {
+    const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+    const roomsRef = database.ref('game_rooms');
+    const snapshot = await roomsRef.once('value');
+    const rooms = snapshot.val();
+    
+    if (rooms) {
+        for (const [roomId, roomData] of Object.entries(rooms)) {
+            if (!roomData.createdAt || roomData.createdAt < oneDayAgo) {
+                database.ref(`game_rooms/${roomId}`).remove()
+                    .then(() => console.log(`Đã xóa phòng cũ: ${roomId}`))
+                    .catch(e => console.log(`Lỗi xóa phòng ${roomId}:`, e));
+            }
+        }
+    }
+}
+
+// ========== KẾT NỐI QUA FIREBASE RTDB ==========
 async function kichHoatMayChuPC() {
     if (isConnected) {
         alert("Đã có kết nối rồi!");
         return;
     }
     
+    // Dọn dẹp phòng cũ
+    await xoaPhongCu();
+    
+    const roomId = Math.floor(1000 + Math.random() * 9000).toString();
+    currentRoomId = roomId;
+    
     document.getElementById("qrcode-area").style.display = "block";
     const statusText = document.getElementById("status-text");
     statusText.innerText = "Đang tạo phòng...";
     
     try {
-        // Tạo phòng trên Worker - LẤY roomId TỪ WORKER
-        const response = await fetch(`${WORKER_URL}/create`, { method: 'POST' });
-        const data = await response.json();
+        // Tạo phòng trên Firebase
+        roomRef = database.ref(`game_rooms/${roomId}`);
         
-        if (!data.roomId) {
-            throw new Error("Không thể tạo phòng");
-        }
-        
-        const roomId = data.roomId;
-        currentRoomId = roomId;
-        
-        statusText.innerText = `Phòng: ${roomId} - Đang kết nối WebSocket...`;
-        
-        // Kết nối WebSocket với role=host (DÙNG wss://)
-        ws = new WebSocket(`${WS_URL}?roomId=${roomId}&role=host`);
-        
-        ws.onopen = () => {
-            statusText.innerText = `Phòng: ${roomId} - Chờ tay cầm kết nối...`;
-            
-            // Tạo QR code (chứa URL đầy đủ để máy phụ kết nối)
-            const qrDiv = document.getElementById("qrcode");
-            qrDiv.innerHTML = "";
-            const qrUrl = `${WS_URL}?roomId=${roomId}&role=player`;
-            new QRCode(qrDiv, { text: qrUrl, width: 130, height: 130 });
+        const roomData = {
+            hostId: "host",
+            createdAt: firebase.database.ServerValue.TIMESTAMP,
+            status: "waiting",
+            lastActive: firebase.database.ServerValue.TIMESTAMP
         };
         
-        ws.onmessage = (event) => {
-            try {
-                const message = JSON.parse(event.data);
+        await roomRef.set(roomData);
+        
+        statusText.innerText = `Phòng: ${roomId} - Chờ tay cầm kết nối...`;
+        
+        // Tạo QR code (chỉ chứa roomId)
+        const qrDiv = document.getElementById("qrcode");
+        qrDiv.innerHTML = "";
+        new QRCode(qrDiv, { text: roomId, width: 130, height: 130 });
+        
+        // Lắng nghe lệnh từ tay cầm
+        commandRef = database.ref(`game_rooms/${roomId}/commands`);
+        commandRef.on('child_added', (snapshot) => {
+            const command = snapshot.val();
+            if (command) {
+                // Xử lý lệnh điều khiển
+                const eventType = command.type === "keydown" ? "keydown" : "keyup";
+                const keyEvent = new KeyboardEvent(eventType, {
+                    key: command.key,
+                    keyCode: command.keyCode,
+                    code: command.code,
+                    which: command.keyCode,
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+                document.dispatchEvent(keyEvent);
+                const emuEl = document.getElementById("emulator");
+                if(emuEl) emuEl.dispatchEvent(keyEvent);
                 
-                if (message.type === 'peer_joined') {
-                    statusText.innerHTML = "✅ <span style='color:#00ffcc;font-weight:bold;'>ĐÃ KẾT NỐI TAY CẦM P2!</span>";
-                    isConnected = true;
-                    const qrElement = document.getElementById("qrcode");
-                    if(qrElement) qrElement.style.display = "none";
+                if(window.EJS_emulator && window.EJS_emulator.gameManager && window.EJS_emulator.gameManager.controls) {
+                    try {
+                        if(command.type === "keydown") {
+                            window.EJS_emulator.gameManager.controls.keyDown(command.keyCode, command.key);
+                        } else {
+                            window.EJS_emulator.gameManager.controls.keyUp(command.keyCode, command.key);
+                        }
+                    } catch(e){}
                 }
-                else if (message.type === 'game_data') {
-                    // Nhận dữ liệu từ tay cầm
-                    const data = message.data;
-                    const eventType = data.type === "keydown" ? "keydown" : "keyup";
-                    const keyEvent = new KeyboardEvent(eventType, {
-                        key: data.key,
-                        keyCode: data.keyCode,
-                        code: data.code,
-                        which: data.keyCode,
-                        bubbles: true,
-                        cancelable: true,
-                        view: window
-                    });
-                    document.dispatchEvent(keyEvent);
-                    const emuEl = document.getElementById("emulator");
-                    if(emuEl) emuEl.dispatchEvent(keyEvent);
-                    
-                    if(window.EJS_emulator && window.EJS_emulator.gameManager && window.EJS_emulator.gameManager.controls) {
-                        try {
-                            if(data.type === "keydown") {
-                                window.EJS_emulator.gameManager.controls.keyDown(data.keyCode, data.key);
-                            } else {
-                                window.EJS_emulator.gameManager.controls.keyUp(data.keyCode, data.key);
-                            }
-                        } catch(e){}
-                    }
-                }
-                else if (message.type === 'peer_left') {
-                    statusText.innerText = "Tay cầm đã ngắt kết nối, đang chờ...";
-                    isConnected = false;
-                }
-            } catch(e) {
-                console.error("Lỗi xử lý message:", e);
+                
+                // Xóa lệnh sau khi xử lý
+                snapshot.ref.remove();
             }
-        };
+        });
         
-        ws.onerror = (err) => {
-            console.error("WebSocket error:", err);
-            statusText.innerText = "Lỗi kết nối! Thử lại.";
-        };
-        
-        ws.onclose = () => {
-            if (!isConnected) {
-                statusText.innerText = "Mất kết nối! Tải lại trang.";
+        // Lắng nghe trạng thái kết nối từ tay cầm
+        roomRef.child('playerConnected').on('value', (snapshot) => {
+            if (snapshot.val() === true && !isConnected) {
+                isConnected = true;
+                statusText.innerHTML = "✅ <span style='color:#00ffcc;font-weight:bold;'>ĐÃ KẾT NỐI TAY CẦM P2!</span>";
+                const qrElement = document.getElementById("qrcode");
+                if(qrElement) qrElement.style.display = "none";
+            } else if (snapshot.val() === false && isConnected) {
+                isConnected = false;
+                statusText.innerText = "Tay cầm đã ngắt kết nối, đang chờ...";
             }
-        };
+        });
+        
+        // Cập nhật thời gian hoạt động mỗi 30 giây
+        keepAliveInterval = setInterval(() => {
+            if (roomRef) {
+                roomRef.update({ lastActive: firebase.database.ServerValue.TIMESTAMP });
+            }
+        }, 30000);
         
     } catch(err) {
         console.error("Lỗi tạo phòng:", err);
