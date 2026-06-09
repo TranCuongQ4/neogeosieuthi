@@ -219,7 +219,8 @@ body { display: flex; flex-direction: column; justify-content: space-between; pa
 
 <script>
 // === CLOUDFLARE WORKER WEBSOCKET RELAY ===
-const WORKER_URL = 'https://flat-brook-d911game-relay-v2.tranmanhcuonghappy.workers.dev';
+const WORKER_URL = 'https://fragrant-hall-e77cdurableobject.tranmanhcuonghappy.workers.dev';
+const WS_URL = WORKER_URL.replace(/^https/, 'wss');
 
 let ws = null;
 let html5QrcodeScanner = null;
@@ -304,6 +305,9 @@ function guiLenhPhim(type, key, keyCode, code) {
         payload: { type, key, keyCode, code }
     }));
 }
+
+
+
 
 // XỬ LÝ TOUCH
 const activeButtons = new Set();

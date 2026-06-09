@@ -397,7 +397,8 @@ h1{
 
 <script>
 // === CLOUDFLARE WORKER WEBSOCKET RELAY ===
-const WORKER_URL = 'https://flat-brook-d911game-relay-v2.tranmanhcuonghappy.workers.dev';
+const WORKER_URL = 'https://fragrant-hall-e77cdurableobject.tranmanhcuonghappy.workers.dev';
+const WS_URL = WORKER_URL.replace(/^https/, 'wss');
 
 let isLoaderScriptLoaded = false;
 let ws = null;
@@ -498,15 +499,12 @@ async function kichHoatMayChuPC() {
         return;
     }
     
-    const roomId = Math.floor(1000 + Math.random() * 9000).toString();
-    currentRoomId = roomId;
-    
     document.getElementById("qrcode-area").style.display = "block";
     const statusText = document.getElementById("status-text");
     statusText.innerText = "Đang tạo phòng...";
     
     try {
-        // Tạo phòng trên Worker
+        // Tạo phòng trên Worker - LẤY roomId TỪ WORKER
         const response = await fetch(`${WORKER_URL}/create`, { method: 'POST' });
         const data = await response.json();
         
@@ -514,10 +512,13 @@ async function kichHoatMayChuPC() {
             throw new Error("Không thể tạo phòng");
         }
         
+        const roomId = data.roomId;
+        currentRoomId = roomId;
+        
         statusText.innerText = `Phòng: ${roomId} - Đang kết nối WebSocket...`;
         
-        // Kết nối WebSocket với role=host
-        ws = new WebSocket(`${WORKER_URL}?roomId=${roomId}&role=host`);
+        // Kết nối WebSocket với role=host (DÙNG wss://)
+        ws = new WebSocket(`${WS_URL}?roomId=${roomId}&role=host`);
         
         ws.onopen = () => {
             statusText.innerText = `Phòng: ${roomId} - Chờ tay cầm kết nối...`;
@@ -525,7 +526,7 @@ async function kichHoatMayChuPC() {
             // Tạo QR code (chứa URL đầy đủ để máy phụ kết nối)
             const qrDiv = document.getElementById("qrcode");
             qrDiv.innerHTML = "";
-            const qrUrl = `${WORKER_URL}?roomId=${roomId}&role=player`;
+            const qrUrl = `${WS_URL}?roomId=${roomId}&role=player`;
             new QRCode(qrDiv, { text: qrUrl, width: 130, height: 130 });
         };
         
