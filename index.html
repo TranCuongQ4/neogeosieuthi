@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <title>Neo Geo - Game Thùng Siêu Thị</title>
 <style>
-/* GIỮ NGUYÊN TOÀN BỘ CSS CỦA BẠN */
+/* GIỮ NGUYÊN TOÀN BỘ CSS - không thay đổi gì */
 html,body{
     margin:0;
     padding:0;
@@ -321,7 +321,7 @@ h1{
         </div>
     </div>
 	
-	<!-- Các nút game giữ nguyên -->
+	<!-- Các nút game -->
 	<button class="btn btn-neogeo" onclick="startGame('roms/heatbrlu.zip')">🔹 Heated Barrel 🔹</button>
 	<button class="btn btn-neogeo" onclick="startGame('roms/karatblz.zip')">🔹 KARATE WORLD 🔹</button>
 	<button class="btn btn-neogeo" onclick="playSamurai2()">🔹 SAMURAI SHODOWN 2 🔹</button>
@@ -426,7 +426,6 @@ async function xoaPhongCu() {
     
     if (rooms) {
         for (const [roomId, roomData] of Object.entries(rooms)) {
-            // Xóa phòng tạo từ hôm qua hoặc không có createdAt
             if (!roomData.createdAt || roomData.createdAt < oneDayAgo) {
                 database.ref(`game_rooms/${roomId}`).remove()
                     .then(() => console.log(`Đã xóa phòng cũ: ${roomId}`))
@@ -484,7 +483,6 @@ function startGame(romUrl, romName = ""){
 }
 
 function forceCloseGame(){ 
-    // Xóa phòng Firebase nếu chưa kết nối hoặc lỗi
     if (roomRef && !connectionEstablished) {
         roomRef.remove().catch(e=>console.log("Lỗi xóa phòng:", e));
     }
@@ -527,17 +525,15 @@ closeBtn.addEventListener("click",()=> forceCloseGame());
 function moBangHuongDan(){ document.getElementById("guide-modal").style.display = "flex"; }
 function dongBangHuongDan(){ document.getElementById("guide-modal").style.display = "none"; }
 
-// ========== KẾT NỐI QUA FIREBASE + PEERJS ==========
+// ========== KẾT NỐI QUA FIREBASE + PEERJS (đã thêm TURN server) ==========
 async function kichHoatMayChuPC() {
     if (connectionEstablished) {
         alert("Đã có kết nối rồi!");
         return;
     }
     
-    // DỌN DẸP PHÒNG CŨ TRƯỚC KHI TẠO PHÒNG MỚI
     await xoaPhongCu();
     
-    // Tạo ID phòng ngẫu nhiên
     const roomId = Math.floor(1000 + Math.random() * 9000).toString();
     currentRoomId = `neogeo_room_${roomId}`;
     
@@ -545,15 +541,32 @@ async function kichHoatMayChuPC() {
     const statusText = document.getElementById("status-text");
     statusText.innerText = "Đang khởi tạo máy chủ...";
     
-    // Tạo Peer với ID ngẫu nhiên
+    // ⭐ QUAN TRỌNG: ĐÃ THÊM TURN SERVER VÀO ĐÂY ⭐
     peer = new Peer({
         config: {
             iceServers: [
+                // STUN servers (giữ nguyên)
                 { urls: 'stun:stun.l.google.com:19302' },
                 { urls: 'stun:stun1.l.google.com:19302' },
                 { urls: 'stun:stun2.l.google.com:19302' },
                 { urls: 'stun:stun3.l.google.com:19302' },
-                { urls: 'stun:stun4.l.google.com:19302' }
+                { urls: 'stun:stun4.l.google.com:19302' },
+                // TURN servers - KHÔNG CẦN ĐĂNG KÝ, DÙNG NGAY
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:3478',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
             ]
         }
     });
@@ -561,7 +574,6 @@ async function kichHoatMayChuPC() {
     peer.on('open', function(hostPeerId) {
         statusText.innerText = "Đang tạo phòng trên Firebase...";
         
-        // Tạo phòng trên Firebase
         roomRef = database.ref(`game_rooms/${currentRoomId}`);
         
         const roomData = {
@@ -574,27 +586,22 @@ async function kichHoatMayChuPC() {
         roomRef.set(roomData).then(() => {
             statusText.innerText = `Phòng: ${roomId} - Chờ kết nối...`;
             
-            // Tạo mã QR
             const qrDiv = document.getElementById("qrcode");
             qrDiv.innerHTML = "";
             new QRCode(qrDiv, { text: currentRoomId, width: 130, height: 130 });
             
-            // Lắng nghe kết nối từ client
             roomRef.on('value', (snapshot) => {
                 const data = snapshot.val();
                 if (data && data.clientId && !connectionEstablished) {
                     statusText.innerHTML = "✅ <span style='color:#00ffcc;font-weight:bold;'>ĐÃ KẾT NỐI TAY CẦM P2!</span>";
                     connectionEstablished = true;
                     
-                    // Kết nối đến client
                     currentConnection = peer.connect(data.clientId);
                     
                     currentConnection.on('open', () => {
                         console.log("Đã kết nối đến client");
                         const qrElement = document.getElementById("qrcode");
                         if(qrElement) qrElement.style.display = "none";
-                        
-                        // Cập nhật trạng thái (KHÔNG XÓA PHÒNG)
                         roomRef.update({ 
                             status: "connected",
                             connectedAt: firebase.database.ServerValue.TIMESTAMP
@@ -632,7 +639,6 @@ async function kichHoatMayChuPC() {
                     currentConnection.on('close', () => {
                         connectionEstablished = false;
                         statusText.innerText = "Mất kết nối, đang chờ lại...";
-                        // Reset trạng thái phòng để có thể kết nối lại
                         roomRef.update({ clientId: null, status: "waiting" });
                     });
                 }
