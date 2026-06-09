@@ -492,7 +492,9 @@ function kichHoatMayChuPC() {
     if (qrcodeCreated) return;
 
     // Cấu hình ICE với nhiều STUN server
-    peer = new Peer(`trancuong_neogeo_${roomId}`, {
+    const targetPeerId = `trancuong_neogeo_${roomId}`;
+    
+    peer = new Peer(targetPeerId, {
         config: {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -508,7 +510,8 @@ function kichHoatMayChuPC() {
         statusText.innerText = `Chờ kết nối... (Mã: ${roomId})`;
         const qrDiv = document.getElementById("qrcode");
         qrDiv.innerHTML = "";
-        new QRCode(qrDiv, { text: roomId, width: 130, height: 130 });
+        // CHUẨN HÓA: Mã hóa toàn bộ chuỗi ID đầy đủ vào QR để máy phụ đọc trực tiếp
+        new QRCode(qrDiv, { text: targetPeerId, width: 130, height: 130 });
         qrcodeCreated = true;
     });
 

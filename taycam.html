@@ -265,7 +265,7 @@ function dongCameraQuet() {
     if (html5QrcodeScanner) { html5QrcodeScanner.stop().catch(()=>{}); }
 }
 
-function ketNoiMayChuPeerJS(roomId) {
+function ketNoiMayChuPeerJS(scannedRoomId) {
     const statusBar = document.getElementById("status-bar");
     const statusText = document.getElementById("status-text");
     statusText.innerText = `Đang kết nối...`;
@@ -276,7 +276,13 @@ function ketNoiMayChuPeerJS(roomId) {
     peer = new Peer(iceServersConfig);
 
     peer.on('open', function(id) {
-        conn = peer.connect(`trancuong_neogeo_${roomId}`, { 
+        // CHUẨN HÓA: Tự động kiểm tra cấu trúc chuỗi kết nối an toàn
+        let finalPeerId = scannedRoomId.trim();
+        if (!finalPeerId.startsWith("trancuong_neogeo_")) {
+            finalPeerId = `trancuong_neogeo_${finalPeerId}`;
+        }
+
+        conn = peer.connect(finalPeerId, { 
             reliable: false, 
             ordered: false 
         });
