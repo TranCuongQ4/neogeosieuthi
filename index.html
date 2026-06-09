@@ -561,34 +561,38 @@ async function kichHoatMayChuPC() {
         
         // Lắng nghe lệnh từ tay cầm
         commandRef = database.ref(`game_rooms/${roomId}/commands`);
-        // SỬA LẠI HÀM XỬ LÝ LỆNH
-commandRef.on('child_added', (snapshot) => {
-    const command = snapshot.val();
-    if (command) {
-        // XỬ LÝ NHANH, KHÔNG LOG
-        const eventType = command.type === "keydown" ? "keydown" : "keyup";
-        const keyEvent = new KeyboardEvent(eventType, {
-            key: command.key,
-            keyCode: command.keyCode,
-            code: command.code,
-            bubbles: true
-        });
-        document.dispatchEvent(keyEvent);
-        
-        if(window.EJS_emulator?.gameManager?.controls) {
-            try {
-                if(command.type === "keydown") {
-                    window.EJS_emulator.gameManager.controls.keyDown(command.keyCode, command.key);
-                } else {
-                    window.EJS_emulator.gameManager.controls.keyUp(command.keyCode, command.key);
+        commandRef.on('child_added', (snapshot) => {
+            const command = snapshot.val();
+            if (command) {
+                // Xử lý lệnh điều khiển
+                const eventType = command.type === "keydown" ? "keydown" : "keyup";
+                const keyEvent = new KeyboardEvent(eventType, {
+                    key: command.key,
+                    keyCode: command.keyCode,
+                    code: command.code,
+                    which: command.keyCode,
+                    bubbles: true,
+                    cancelable: true,
+                    view: window
+                });
+                document.dispatchEvent(keyEvent);
+                const emuEl = document.getElementById("emulator");
+                if(emuEl) emuEl.dispatchEvent(keyEvent);
+                
+                if(window.EJS_emulator && window.EJS_emulator.gameManager && window.EJS_emulator.gameManager.controls) {
+                    try {
+                        if(command.type === "keydown") {
+                            window.EJS_emulator.gameManager.controls.keyDown(command.keyCode, command.key);
+                        } else {
+                            window.EJS_emulator.gameManager.controls.keyUp(command.keyCode, command.key);
+                        }
+                    } catch(e){}
                 }
-            } catch(e){}
-        }
-        
-        // XÓA LỆNH NGAY
-        snapshot.ref.remove();
-    }
-});
+                
+                // Xóa lệnh sau khi xử lý
+                snapshot.ref.remove();
+            }
+        });
         
         // Lắng nghe trạng thái kết nối từ tay cầm
         roomRef.child('playerConnected').on('value', (snapshot) => {
